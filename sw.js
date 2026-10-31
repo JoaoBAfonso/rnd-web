@@ -1,4 +1,4 @@
-const CACHE = "rnd-web-v5";
+const CACHE = "rnd-web-v6";
 const FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
