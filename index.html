@@ -176,7 +176,32 @@
   .m i { inset: 0; height: auto; border-radius: 6px; background: linear-gradient(0deg, #55C6B3 0%, #55C6B3 60%, #E0B45C 82%, #E5483A 100%); clip-path: inset(100% 0 0 0); transition: clip-path .06s linear; }
   .m b { position: absolute; left: 3px; right: 3px; height: 2px; background: #fff; border-radius: 1px; opacity: 0; box-shadow: 0 0 6px #fff; }
   .m span { z-index: 1; text-shadow: 0 1px 2px #000; }
-  #meters { grid-template-columns: repeat(auto-fill, 44px); max-width: none; }</style>
+  #meters { max-width: none; }
+  /* ---- Pro layer ---- */
+  .metersec { padding: 10px 14px; }
+  .metersec #meters { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .metersec:has(#meters:empty) { display: none; }
+  .metersec .m { width: 44px; height: 64px; }
+  #random { position: relative; isolation: isolate; overflow: hidden; height: 112px; padding: 0; border: 0; border-radius: 26px; color: #fff; letter-spacing: 0; text-shadow: none;
+    background: #15171a; box-shadow: 0 18px 40px -12px rgba(var(--tc),.55), 0 0 0 1px rgba(255,255,255,.08), inset 0 1px 0 rgba(255,255,255,.18); transition: transform .15s, box-shadow .3s; }
+  #random::before { content: ""; position: absolute; inset: -60%; z-index: -3; background: conic-gradient(from 0deg, #E66B4E, #F2B25C, #55C6B3, #A58BDB, #E66B4E); animation: spin 9s linear infinite; filter: saturate(1.1); }
+  #random::after { content: ""; position: absolute; inset: 2px; z-index: -2; border-radius: 24px; background: radial-gradient(120% 140% at 50% 0%, rgba(255,255,255,.14), transparent 55%), linear-gradient(180deg, #23272c, #121417); }
+  #random .rg { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); z-index: -1; border-radius: 24px; opacity: .9; mix-blend-mode: screen; }
+  #random .rc { display: flex; align-items: center; justify-content: center; gap: 16px; height: 100%; position: relative; }
+  #random .rc::after { content: ""; position: absolute; top: 0; bottom: 0; width: 60px; left: -80px; background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent); transform: skewX(-20deg); animation: sheen 4.5s ease-in-out infinite; }
+  #random .die { width: 38px; height: 38px; color: #F2B25C; filter: drop-shadow(0 0 10px rgba(242,178,92,.7)); transition: transform .5s cubic-bezier(.3,1.6,.5,1); }
+  #random:hover .die { transform: rotate(180deg) scale(1.08); }
+  #random .rt { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  #random .rt b { font-size: 24px; font-weight: 800; letter-spacing: .3em; background: linear-gradient(180deg, #fff, #ffd9cc 70%, #f2a58f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #random .rt em { font-style: normal; font-size: 10.5px; letter-spacing: .22em; text-transform: uppercase; color: rgba(255,255,255,.6); }
+  #random:hover:not(:disabled) { box-shadow: 0 22px 48px -10px rgba(var(--tc),.75), 0 0 0 1px rgba(255,255,255,.12), inset 0 1px 0 rgba(255,255,255,.25); }
+  #random:active:not(:disabled) { transform: scale(.975); }
+  #random:active .die { transform: rotate(360deg) scale(.9); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes sheen { 0%, 55% { left: -80px; } 100% { left: 110%; } }
+  section { background: linear-gradient(180deg, rgba(34,38,43,.72), rgba(24,27,31,.72)); border: 1px solid transparent; background-clip: padding-box; box-shadow: 0 0 0 1px rgba(255,255,255,.07), 0 24px 50px -24px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.06); -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2); }
+  section h2 { background: linear-gradient(90deg, var(--accent2), rgba(var(--tc),.5)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  @media (prefers-reduced-motion: reduce) { #random::before, #random .rc::after { animation: none; } }</style>
 </head>
 <body>
 <canvas id="bg" aria-hidden="true"></canvas>
@@ -216,10 +241,28 @@
   </div>
 </div>
 
+<section class="metersec"><div id="meters"></div></section>
+
 <div id="blank" hidden><button id="home">←  Home</button></div>
 
 <section>
-  <button id="random">Random<br>RND</button>
+  <button id="random" aria-label="Random RND">
+    <svg class="rg" viewBox="0 0 400 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <radialGradient id="rgA" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+        <pattern id="rgDots" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><circle cx="5" cy="5" r="1.3" fill="#fff" fill-opacity=".35"/></pattern>
+        <mask id="rgM"><rect width="400" height="120" fill="url(#rgA)"/></mask>
+      </defs>
+      <rect width="400" height="120" fill="url(#rgDots)" mask="url(#rgM)"/>
+      <g fill="none" stroke="#fff" stroke-opacity=".35">
+        <circle cx="200" cy="60" r="28"/><circle cx="200" cy="60" r="46" stroke-opacity=".22"/><circle cx="200" cy="60" r="66" stroke-opacity=".14"/><circle cx="200" cy="60" r="90" stroke-opacity=".08"/>
+      </g>
+    </svg>
+    <span class="rc">
+      <svg class="die" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.5" fill="currentColor"/></svg>
+      <span class="rt"><b>RANDOM</b><em>RND · nova combinação</em></span>
+    </span>
+  </button>
   <div class="row"><span class="lbl">Seed</span> <span class="info" id="seed">—</span> <input id="seedIn" size="8" placeholder="Seed (hex)"> <button id="seedSend">Enviar seed</button></div>
   <hr>
   <div class="row">
@@ -285,7 +328,6 @@
   <h2>Scope</h2>
   <div class="row" id="scopeModes"></div>
   <div class="row"><canvas id="scope"></canvas><span id="scopeDb" class="info">—</span></div>
-  <div id="meters"></div>
 </section>
 
 <section><h2>Log</h2><div id="log"></div></section>
