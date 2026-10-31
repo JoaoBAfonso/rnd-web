@@ -56,6 +56,7 @@
   </div>
   <label class="s">Scale <select id="scale"></select><span></span></label>
   <label class="s">BPM <input id="bpm" type="range" min="20" max="400" value="120"><span id="bpmV">120</span></label>
+  <div class="row"><button id="tStart">▶ Start</button> <button id="tStop">■ Stop</button></div>
   <div class="row">Seed: <span class="info" id="seed">—</span> <input id="seedIn" size="10" placeholder="hex"> <button id="seedSend">Enviar seed</button></div>
 </section>
 
@@ -274,6 +275,8 @@ $("seedSend").onclick = () => {
 
 function sendCC(ch, cc, v) { midiOut && midiOut.send([0xB0 | ch, cc, v]); }
 function sendSysex(body) { midiOut && midiOut.send([0xF0, ...HDR, ...body, 0xF7]); }
+document.getElementById('tStart').onclick = () => sendSysex([0x11, 0]);
+document.getElementById('tStop').onclick = () => sendSysex([0x11, 1]);
 function requestSync() { sendSysex([0x19]); sendSysex([0x18]); }
 
 function onMessage(e) {
