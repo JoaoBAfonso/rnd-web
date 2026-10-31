@@ -162,7 +162,21 @@
   .conn { background: rgba(29,33,37,.6); }
   .track { background: rgba(17,19,21,.62); }
   #log { background: rgba(14,16,18,.7); }
-  body { background: #0b0d0f; }</style>
+  body { background: #0b0d0f; }
+  /* ---- Reatividade ---- */
+  :root { --lvl: .15; --tc: 230,107,78; }
+  .head .logo { transform: scale(calc(1 + var(--lvl) * .05)); filter: drop-shadow(0 4px calc(8px + var(--lvl) * 30px) rgba(var(--tc), calc(.25 + var(--lvl) * .6))); will-change: transform, filter; }
+  #scope { height: 190px; }
+  #scopeModes button { min-height: 30px; padding: 3px 10px; font-size: 11px; border-radius: 10px; }
+  .track.hit { animation: hit .35s ease-out; }
+  @keyframes hit { 0% { box-shadow: 0 0 0 1px var(--tc, #E66B4E), 0 0 22px var(--tc, #E66B4E); } 100% { box-shadow: none; } }
+  #kb .k.rx { background: linear-gradient(180deg, #f6b19f, var(--accent)); }
+  #kb .k.b.rx { background: linear-gradient(180deg, #c75a40, #8f3a28); }
+  .m { overflow: visible; }
+  .m i { inset: 0; height: auto; border-radius: 6px; background: linear-gradient(0deg, #55C6B3 0%, #55C6B3 60%, #E0B45C 82%, #E5483A 100%); clip-path: inset(100% 0 0 0); transition: clip-path .06s linear; }
+  .m b { position: absolute; left: 3px; right: 3px; height: 2px; background: #fff; border-radius: 1px; opacity: 0; box-shadow: 0 0 6px #fff; }
+  .m span { z-index: 1; text-shadow: 0 1px 2px #000; }
+  #meters { grid-template-columns: repeat(auto-fill, 44px); max-width: none; }</style>
 </head>
 <body>
 <canvas id="bg" aria-hidden="true"></canvas>
@@ -269,6 +283,7 @@
 
 <section>
   <h2>Scope</h2>
+  <div class="row" id="scopeModes"></div>
   <div class="row"><canvas id="scope"></canvas><span id="scopeDb" class="info">—</span></div>
   <div id="meters"></div>
 </section>
@@ -480,9 +495,18 @@ document.getElementById('tStart').onclick = () => sendSysex([0x11, 0]);
 document.getElementById('tStop').onclick = () => sendSysex([0x11, 1]);
 function requestSync() { sendSysex([0x19]); sendSysex([0x18]); }
 
+function flashNote(ch, note) {
+  viz.pulse = Math.min(1, viz.pulse + 0.25);
+  const tr = ch >= 1 && ch <= 4 ? document.querySelectorAll(".track")[ch - 1] : null;
+  if (tr) { tr.classList.remove("hit"); void tr.offsetWidth; tr.classList.add("hit"); }
+  const k = document.querySelector(`#kb .k[data-n="${note}"]`);
+  if (k) { k.classList.add("rx"); setTimeout(() => k.classList.remove("rx"), 160); }
+  viz.kick = 1;
+}
 function onMessage(e) {
   const d = e.data;
   viz.pulse = Math.min(1, viz.pulse + 0.35);
+  if ((d[0] & 0xF0) === 0x90 && d[2] > 0) flashNote(d[0] & 0x0F, d[1]);
   if ((d[0] & 0xF0) === 0xB0) {
     const ch = d[0] & 0x0F, cc = d[1], v = d[2];
     if (cc === 9 && ch === 0) { $("scale").value = v; }
@@ -833,40 +857,116 @@ const rec = { n: 2, ctx: null, stream: null, node: null, active: false, chunks: 
 const meterEls = [];
 for (let c = 0; c < REC_CHANNELS; c++) {
   const m = document.createElement("div");
-  m.className = "m"; m.innerHTML = `<span>${c + 1}</span><i></i>`;
+  m.className = "m"; m.innerHTML = `<span>${c + 1}</span><i></i><b></b>`;
   $("meters").appendChild(m); meterEls.push(m);
 }
+const meterHold = [];
 const setMeter = (c, peak) => {
   const db = peak > 0 ? 20 * Math.log10(peak) : -90;
-  meterEls[c].querySelector("i").style.height = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + "%";
-  meterEls[c].querySelector("span").textContent = db <= -90 ? (c + 1) : Math.round(db);
+  const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
+  const m = meterEls[c];
+  m.querySelector("i").style.clipPath = `inset(${100 - pct}% 0 0 0)`;
+  const hold = meterHold[c] || (meterHold[c] = { v: 0, t: 0 });
+  const t = performance.now();
+  if (pct >= hold.v || t - hold.t > 900) { hold.v = pct; hold.t = t; }
+  m.querySelector("b").style.bottom = hold.v + "%";
+  m.querySelector("b").style.opacity = hold.v > 1 ? 1 : 0;
+  m.querySelector("span").textContent = db <= -90 ? (c + 1) : Math.round(db);
 };
 const scopeCv = $("scope"), scopeCtx = scopeCv.getContext("2d");
-function clearScope() {
+const TYPE_RGB = [[230, 107, 78], [165, 139, 219], [224, 180, 92]];
+const SCOPE_MODES = ["Onda", "Grelha", "Esfera", "Hélice", "Toro", "Cubo"];
+let scopeMode = Math.min(SCOPE_MODES.length - 1, +localStorage.getItem("scopeMode") || 0);
+SCOPE_MODES.forEach((n, i) => {
+  const b = document.createElement("button");
+  b.textContent = n; b.dataset.m = i;
+  b.onclick = () => { scopeMode = i; localStorage.setItem("scopeMode", i); markScopeMode(); };
+  $("scopeModes").appendChild(b);
+});
+function markScopeMode() { [...$("scopeModes").children].forEach(b => b.classList.toggle("on", +b.dataset.m === scopeMode)); }
+markScopeMode();
+function clearScope(line = true) {
   const dpr = window.devicePixelRatio || 1, w = scopeCv.clientWidth, h = scopeCv.clientHeight;
   if (scopeCv.width !== Math.round(w * dpr)) { scopeCv.width = Math.round(w * dpr); scopeCv.height = Math.round(h * dpr); }
   scopeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  scopeCtx.fillStyle = "#17191C"; scopeCtx.fillRect(0, 0, w, h);
-  scopeCtx.strokeStyle = "#34383D"; scopeCtx.lineWidth = 1;
-  scopeCtx.beginPath(); scopeCtx.moveTo(0, h / 2); scopeCtx.lineTo(w, h / 2); scopeCtx.stroke();
+  scopeCtx.shadowBlur = 0;
+  scopeCtx.clearRect(0, 0, w, h);
+  if (line) {
+    scopeCtx.strokeStyle = "#34383D"; scopeCtx.lineWidth = 1;
+    scopeCtx.beginPath(); scopeCtx.moveTo(0, h / 2); scopeCtx.lineTo(w, h / 2); scopeCtx.stroke();
+  }
   return [w, h];
 }
 function drawScope(wave, peak) {
   viz.wave = wave; viz.peak = peak; viz.audioAt = performance.now();
-  const [w, h] = clearScope();
-  const len = 1024;
-  let start = 0;
-  for (let i = 1; i < wave.length - len; i++) if (wave[i - 1] < 0 && wave[i] >= 0) { start = i; break; }
-  scopeCtx.strokeStyle = "#E66B4E"; scopeCtx.lineWidth = 2; scopeCtx.beginPath();
-  for (let x = 0; x < w; x++) {
-    const s = wave[start + Math.floor(x / w * len)];
-    const y = h / 2 - Math.max(-1, Math.min(1, s)) * (h / 2 - 2);
-    x ? scopeCtx.lineTo(x, y) : scopeCtx.moveTo(x, y);
-  }
-  scopeCtx.stroke();
   const db = peak > 0 ? 20 * Math.log10(peak) : -Infinity;
   $("scopeDb").textContent = Number.isFinite(db) && db > -90 ? db.toFixed(1) + " dBFS" : "—";
 }
+function draw2D(wave, w, h, col) {
+  const len = 1024;
+  scopeCtx.strokeStyle = col; scopeCtx.lineWidth = 2; scopeCtx.shadowColor = col; scopeCtx.shadowBlur = 8;
+  scopeCtx.beginPath();
+  if (!wave) { scopeCtx.moveTo(0, h / 2); scopeCtx.lineTo(w, h / 2); scopeCtx.stroke(); return; }
+  let start = 0;
+  for (let i = 1; i < wave.length - len; i++) if (wave[i - 1] < 0 && wave[i] >= 0) { start = i; break; }
+  for (let x = 0; x < w; x++) {
+    const s = wave[start + Math.floor(x / w * len)];
+    const y = h / 2 - Math.max(-1, Math.min(1, s)) * (h / 2 - 3);
+    x ? scopeCtx.lineTo(x, y) : scopeCtx.moveTo(x, y);
+  }
+  scopeCtx.stroke();
+}
+function draw3D(mode, wave, w, h, col, t) {
+  const phase = t * 0.0006;
+  const cy = Math.cos(phase), sy = Math.sin(phase), cx = Math.cos(phase * 0.73), sx = Math.sin(phase * 0.73);
+  const scale = Math.min(w, h) * 0.46;
+  let wp = 1;
+  if (wave) { wp = 0; for (let i = 0; i < wave.length; i += 4) wp = Math.max(wp, Math.abs(wave[i])); wp = wp || 1; }
+  const at = p => wave ? Math.max(-1, Math.min(1, wave[Math.round(Math.max(0, Math.min(1, p)) * (wave.length - 1))] / wp)) : 0;
+  const proj = (x, y, z) => {
+    const rx = x * cy + z * sy, rz = -x * sy + z * cy;
+    const ry = y * cx - rz * sx, dp = y * sx + rz * cx;
+    const k = 2.8 / Math.max(1.3, 3.2 - dp);
+    return [w / 2 + rx * scale * k, h / 2 + ry * scale * k];
+  };
+  scopeCtx.strokeStyle = col; scopeCtx.shadowColor = col; scopeCtx.shadowBlur = 7; scopeCtx.lineJoin = "round";
+  const path = (pts, lw = 1.3) => {
+    scopeCtx.lineWidth = lw; scopeCtx.beginPath();
+    pts.forEach((p, i) => { const q = proj(p[0], p[1], p[2]); i ? scopeCtx.lineTo(q[0], q[1]) : scopeCtx.moveTo(q[0], q[1]); });
+    scopeCtx.stroke();
+  };
+  const N = (n, f) => Array.from({ length: n + 1 }, (_, i) => f(i / n, i));
+  const TAU = Math.PI * 2;
+  if (mode === 1) {
+    for (let r = 0; r < 5; r++) path(N(63, s => [(s - .5) * 2, (r - 2) * .2, at(s)]), r === 2 ? 2.2 : 1.2);
+    for (let s = 0; s < 64; s += 8) { const x = (s / 63 - .5) * 2, z = at(s / 63); path([[x, -.4, z], [x, .4, z]]); }
+  } else if (mode === 2) {
+    const rad = p => .78 + at(p) * .2;
+    for (let l = 0; l < 8; l++) { const a = TAU * l / 8; path(N(32, s => { const la = -Math.PI / 2 + Math.PI * s, q = rad(s); return [q * Math.cos(la) * Math.cos(a), .78 * Math.sin(la) + at(s) * .2, q * Math.cos(la) * Math.sin(a)]; })); }
+    for (let l = 1; l < 6; l++) { const la = -Math.PI / 2 + Math.PI * l / 6; path(N(48, s => { const q = rad(s), a = TAU * s; return [q * Math.cos(la) * Math.cos(a), .78 * Math.sin(la) + at(s) * .2, q * Math.cos(la) * Math.sin(a)]; })); }
+  } else if (mode === 3) {
+    path(N(159, s => { const q = .4 + Math.abs(at(s)) * .42; return [q * Math.cos(s * Math.PI * 6), (s - .5) * 1.8, q * Math.sin(s * Math.PI * 6)]; }), 2.4);
+  } else if (mode === 4) {
+    for (let r = 0; r < 8; r++) { const a = TAU * r / 8; path(N(48, s => { const q = .86 + at(s) * .22 * Math.cos(TAU * s); return [q * Math.cos(a), (.28 + at(s) * .22) * Math.sin(TAU * s), q * Math.sin(a)]; })); }
+    for (let r = 0; r < 8; r++) { const a = TAU * r / 8; path(N(48, s => { const q = .86 + .28 * Math.cos(TAU * s); return [q * Math.cos(a), .28 * Math.sin(TAU * s), q * Math.sin(a)]; }), .6); }
+  } else if (mode === 5) {
+    const v = [];
+    for (const x of [-1, 1]) for (const y of [-1, 1]) for (const z of [-1, 1]) v.push([x * .65, y * .65, z * .65]);
+    v.forEach((p, i) => v.forEach((q, j) => { if (j > i && p.filter((c, k) => c !== q[k]).length === 1) path([p, q]); }));
+    path(N(63, s => [(s - .5) * 1.2, at(s) * .9, .68]), 2.4);
+  }
+}
+function scopeFrame(t) {
+  requestAnimationFrame(scopeFrame);
+  if (document.hidden || t - scopeFrame.last < 33) return;
+  scopeFrame.last = t;
+  const live = viz.wave && performance.now() - viz.audioAt < 600;
+  const c = viz.col, col = `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+  const [w, h] = clearScope(scopeMode === 0);
+  if (scopeMode === 0) draw2D(live ? viz.wave : null, w, h, col);
+  else draw3D(scopeMode, live ? viz.wave : null, w, h, col, t);
+}
+scopeFrame.last = 0;
 clearScope();
 async function fillAudioDevices() {
   const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
@@ -1022,7 +1122,7 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
   navigator.serviceWorker.register("sw.js").catch(e => log("Service worker: " + e.message));
 }
 if (!window.isSecureContext) $("status").textContent = "Contexto não seguro: abra via http://localhost ou HTTPS.";
-const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
+const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, live: 0, lvl: 0, kick: 0, col: [230, 107, 78] };
 (() => {
   const cv = $("bg"), g = cv.getContext("2d");
   const ROWS = 30, COLS = 72, STEP = 70;
@@ -1039,7 +1139,7 @@ const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
   function newRow(t) {
     const r = new Float32Array(COLS);
     const live = viz.wave && performance.now() - viz.audioAt < 600;
-    const amp = 0.5 + viz.pulse * 0.5;
+    const amp = 0.3 + viz.live * 0.25 + viz.pulse * 0.35;
     for (let c = 0; c < COLS; c++) {
       const x = c / (COLS - 1), edge = Math.sin(Math.PI * x);
       let v = Math.sin(x * 9 + t * 0.0011) * 0.5 + Math.sin(x * 23 - t * 0.0017) * 0.3 + Math.sin(x * 4 + t * 0.0006) * 0.4;
@@ -1058,7 +1158,18 @@ const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
     requestAnimationFrame(frame);
     if (document.hidden || t - last < 33) return;
     last = t;
-    viz.pulse *= 0.93;
+    viz.pulse *= 0.93; viz.kick *= 0.9;
+    const liveNow = viz.wave && performance.now() - viz.audioAt < 800;
+    viz.live += ((liveNow ? 1 : 0) - viz.live) * 0.05;
+    viz.lvl += ((liveNow ? Math.min(1, viz.peak * 1.8) : 0) - viz.lvl) * 0.3;
+    const tgt = TYPE_RGB[state.type] || TYPE_RGB[0];
+    for (let k = 0; k < 3; k++) viz.col[k] += (tgt[k] - viz.col[k]) * 0.06;
+    const I = 0.34 + 0.66 * Math.max(viz.live, viz.pulse * 0.8);
+    const R = viz.col[0] | 0, G = viz.col[1] | 0, B = viz.col[2] | 0;
+    const R2 = Math.min(255, R + 12), G2 = Math.min(255, G + 16), B2 = Math.min(255, B + 16);
+    const lvl = Math.min(1, Math.max(viz.lvl, viz.kick * 0.6, 0.12 + 0.1 * Math.sin(t / 1400)));
+    const rs = document.documentElement.style;
+    rs.setProperty("--lvl", lvl.toFixed(2)); rs.setProperty("--tc", `${R},${G},${B}`);
     if (still) { if (t > 100) return; }
     if (t - lastPush > STEP) { rows.pop(); rows.unshift(newRow(t)); lastPush = t; }
     const frac = Math.min(1, (t - lastPush) / STEP);
@@ -1067,7 +1178,7 @@ const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
     for (let i = ROWS - 1; i >= 0; i--) {
       const d = (i + frac) / ROWS, p = Math.pow(d, 1.7);
       const scale = 0.22 + d * 1.25, y0 = top + p * span;
-      const a = Math.min(0.95, 0.08 + d * 1.1);
+      const a = Math.min(0.95, 0.08 + d * 1.1) * I;
       const row = rows[i], px = PX[i], py = PY[i];
       g.beginPath();
       for (let c = 0; c < COLS; c++) {
@@ -1076,13 +1187,13 @@ const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
         px[c] = x; py[c] = y;
         c ? g.lineTo(x, y) : g.moveTo(x, y);
       }
-      g.strokeStyle = `rgba(230,107,78,${a * 0.8})`; g.lineWidth = 0.8 + d * 1.4; g.stroke();
+      g.strokeStyle = `rgba(${R},${G},${B},${a * 0.8})`; g.lineWidth = 0.8 + d * 1.4; g.stroke();
       const sz = 0.8 + d * 2.6;
       for (let c = 0; c < COLS; c += 2) {
         const x = w / 2 + (c / (COLS - 1) - 0.5) * w * 1.7 * scale;
         const v = row[c], y = y0 - v * gain * scale * 0.55;
         const hot = Math.min(1, Math.abs(v) * 1.4);
-        g.fillStyle = hot > 0.55 ? `rgba(85,198,179,${a + 0.15})` : `rgba(240,123,94,${a + hot * 0.3})`;
+        g.fillStyle = hot > 0.55 ? `rgba(85,198,179,${a + 0.15})` : `rgba(${R2},${G2},${B2},${a + hot * 0.3 * I})`;
         g.fillRect(x - sz / 2, y - sz / 2, sz, sz);
       }
     }
@@ -1090,7 +1201,7 @@ const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
     for (let c = 0; c < COLS; c += 4) {
       g.beginPath();
       for (let i = 0; i < ROWS; i++) i ? g.lineTo(PX[i][c], PY[i][c]) : g.moveTo(PX[i][c], PY[i][c]);
-      g.strokeStyle = "rgba(230,107,78,.10)"; g.stroke();
+      g.strokeStyle = `rgba(${R},${G},${B},${0.04 + 0.08 * I})`; g.stroke();
     }
     const grad = g.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, "rgba(11,13,15,.95)"); grad.addColorStop(.35, "rgba(11,13,15,0)"); grad.addColorStop(1, "rgba(11,13,15,.25)");
@@ -1098,6 +1209,7 @@ const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
   }
   requestAnimationFrame(frame);
 })();
+requestAnimationFrame(scopeFrame);
 function paintRanges() {
   document.querySelectorAll("input[type=range]").forEach(r => {
     const min = +r.min || 0, max = +r.max || 100;
