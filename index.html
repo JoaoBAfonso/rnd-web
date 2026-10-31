@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt">
 <head>
 <meta charset="utf-8">
@@ -9,34 +9,53 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>CymaForma RND</title>
 <style>
-  :root { color-scheme: dark; }
-  body { margin: 0; font: 15px system-ui, sans-serif; background: #101214; color: #ddd; }
-  header, section { padding: 10px 14px; }
-  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
-  select, button { background: #23272b; color: #eee; border: 1px solid #3a4046; border-radius: 6px; padding: 8px 12px; font-size: 15px; }
-  button.on { background: #2c6b3f; }
-  label.s { display: grid; grid-template-columns: 90px 1fr 70px; gap: 8px; align-items: center; width: min(560px, 100%); }
-  input[type=range] { width: 100%; height: 28px; }
-  .tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-  .track { border: 1px solid #2d3338; border-radius: 8px; padding: 8px; }
-  .track b { color: #E66B4E; }
-  #log { color: #4cd964; font: 12px monospace; white-space: pre-wrap; max-height: 150px; overflow: auto; }
-  .info { color: #4cd964; }
-  #kb { display: flex; user-select: none; touch-action: none; }
-  #kb .k { flex: 1; height: 110px; border: 1px solid #000; border-radius: 0 0 6px 6px; background: #e8e8e8; color: #222; display: flex; align-items: flex-end; justify-content: center; font-size: 12px; padding-bottom: 4px; }
-  #kb .k.b { background: #2a2e33; color: #ddd; }
+  :root { color-scheme: dark; --bg:#101214; --panel:#1D2125; --gray:#252A2E; --line:#34383D; --accent:#E66B4E; --accent2:#F07B5E; --teal:#55C6B3; --text:#E6E9E8; --muted:#929A9E; --ink:#17191C; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.3 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 760px; margin: 0 auto; padding: 8px 10px 24px; display: flex; flex-direction: column; gap: 10px; }
+  header, section { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 10px 14px; }
+  header { background: var(--ink); }
+  h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .row > label, .lbl { color: var(--accent); font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  select, input:not([type=range]):not([type=file]), button { background: var(--gray); color: var(--text); border: 2px solid var(--line); border-radius: 14px; padding: 8px 12px; font: 700 12px "Segoe UI", system-ui, sans-serif; letter-spacing: .04em; }
+  select { padding-right: 6px; }
+  input:not([type=range]) { font-weight: 400; }
+  button { background: transparent; cursor: pointer; text-transform: uppercase; min-height: 38px; }
+  button:active { background: var(--gray); }
+  button.on { background: var(--accent); border-color: var(--accent2); color: var(--ink); }
+  button:disabled { opacity: .45; }
+  button.primary { background: var(--accent); border-color: var(--accent2); color: var(--ink); }
+  #random { width: 100%; height: 96px; font-size: 20px; letter-spacing: .14em; border-radius: 18px; background: var(--accent); border-color: var(--accent2); color: var(--ink); }
+  #random:active { background: var(--accent2); }
+  label.s { display: grid; grid-template-columns: 84px 1fr 44px; gap: 8px; align-items: center; width: 100%; color: var(--accent); font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  label.s span { color: var(--text); text-align: right; font-weight: 400; }
+  label.s select { grid-column: 2 / 4; }
+  input[type=range] { width: 100%; height: 28px; accent-color: var(--accent); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
+  .tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 8px; }
+  .track { background: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; }
+  .track b { color: var(--accent); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+  .track:nth-child(2) b { color: var(--teal); } .track:nth-child(3) b { color: #A58BDB; } .track:nth-child(4) b { color: #E0B45C; }
+  .track button { min-height: 32px; padding: 4px 10px; }
+  #log { color: var(--teal); font: 12px Consolas, monospace; white-space: pre-wrap; max-height: 150px; overflow: auto; }
+  .info { color: var(--teal); font-weight: 400; }
+  #kb { display: flex; user-select: none; touch-action: none; gap: 2px; }
+  #kb .k { flex: 1; height: 110px; border-radius: 0 0 8px 8px; background: #D7DEDB; color: var(--ink); display: flex; align-items: flex-end; justify-content: center; font-size: 12px; padding-bottom: 4px; }
+  #kb .k.b { background: var(--gray); color: var(--text); }
   #kb .k.sel { outline: 2px solid #E0B45C; outline-offset: -2px; }
-  #kb .k.down { background: #4cd964; }
+  #kb .k.down { background: var(--accent); color: var(--ink); }
   #meters { display: grid; grid-template-columns: 1fr; gap: 6px; max-width: 100px; }
-  .m { background: #1a1d20; border-radius: 4px; height: 70px; position: relative; overflow: hidden; }
-  .m i { position: absolute; left: 0; right: 0; bottom: 0; background: #4cd964; height: 0; }
-  .m span { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-size: 11px; color: #aaa; }
-  #scope { width: min(560px, 100%); height: 120px; border: 1px solid #2d3338; border-radius: 6px; }
+  .m { background: var(--ink); border-radius: 6px; height: 70px; position: relative; overflow: hidden; }
+  .m i { position: absolute; left: 0; right: 0; bottom: 0; background: var(--teal); height: 0; }
+  .m span { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); }
+  #scope { width: min(560px, 100%); height: 120px; background: var(--ink); border: 1px solid var(--line); border-radius: 12px; }
   #scopeDb { font-size: 30px; font-weight: bold; }
-  button.rec { background: #a3302a; }
+  button.rec { background: #a3302a; border-color: #c0443d; color: #fff; }
 </style>
 </head>
 <body>
+<main>
 <header>
   <div class="row">
     <button id="connect">Ligar MIDI</button>
@@ -48,25 +67,33 @@
 </header>
 
 <section>
+  <button id="random">Random<br>RND</button>
+  <hr>
+  <h2>Type</h2>
   <div class="row" id="types"></div>
   <div class="row">
     <button id="lockType">Type: Random</button>
     <button id="lockKey">Key: Random</button>
     <button id="lockScale">Scale: Random</button>
   </div>
-  <label class="s">Scale <select id="scale"></select><span></span></label>
+  <hr>
+  <label class="s">Scale <select id="scale"></select></label>
   <label class="s">BPM <input id="bpm" type="range" min="20" max="400" value="120"><span id="bpmV">120</span></label>
   <div class="row"><button id="tStart">▶ Start</button> <button id="tStop">■ Stop</button></div>
-  <div class="row">Seed: <span class="info" id="seed">—</span> <input id="seedIn" size="10" placeholder="hex"> <button id="seedSend">Enviar seed</button></div>
+  <hr>
+  <div class="row"><span class="lbl">Seed</span> <span class="info" id="seed">—</span> <input id="seedIn" size="10" placeholder="hex"> <button id="seedSend">Enviar seed</button></div>
 </section>
 
 <section>
+  <h2>Presets</h2>
   <div class="row">
-    Preset: <select id="presetSel"></select>
-    <button id="presetRecall">Recuperar</button>
-    <button id="presetDelete">Apagar</button>
-    <input id="presetName" size="14" placeholder="nome">
-    <button id="presetSave">Guardar</button>
+    <select id="presetSel"></select>
+    <button id="presetRecall">Recall</button>
+    <button id="presetDelete">Del</button>
+  </div>
+  <div class="row">
+    <input id="presetName" size="14" placeholder="Nome do preset">
+    <button id="presetSave">Save</button>
     <button id="presetExport">Exportar</button>
     <button id="presetImport">Importar</button>
     <input id="presetFile" type="file" accept="application/json" hidden>
@@ -74,15 +101,17 @@
 </section>
 
 <section>
-  <div class="row">Faixas: <select id="trackCount"><option>Auto</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
+  <h2>Mixer</h2>
+  <div class="row"><span class="lbl">Nº Faixas</span> <select id="trackCount"><option>Auto</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
   <label class="s">Master Vol <input data-ch="0" data-cc="7" type="range" min="0" max="127"><span></span></label>
   <label class="s">Master Rev <input data-ch="0" data-cc="91" type="range" min="0" max="127"><span></span></label>
   <div class="tracks" id="tracks"></div>
 </section>
 
 <section>
+  <h2>Teclado</h2>
   <div class="row">
-    <label>Canal MIDI <select id="kbCh"></select></label>
+    <label>Midi Ch <select id="kbCh"></select></label>
     <label>Oitava <select id="kbOct"></select></label>
     <button id="kbHold">Hold</button>
   </div>
@@ -90,6 +119,7 @@
 </section>
 
 <section>
+  <h2>Áudio</h2>
   <div class="row">
     <button id="audioConnect">Ligar áudio</button>
     <select id="audioSel"></select>
@@ -100,7 +130,8 @@
   <div id="meters"></div>
 </section>
 
-<section><div id="log"></div></section>
+<section><h2>Log</h2><div id="log"></div></section>
+</main>
 
 <script>
 const PATCH_TYPES = ["Sequence", "Drone", "Jingles"];
@@ -267,10 +298,18 @@ $("bpm").oninput = () => {
   clearTimeout(bpmTimer);
   bpmTimer = setTimeout(() => sendSysex([0x1D, v & 0x7F, (v >> 7) & 0x7F]), 40);
 };
+function sendSeed(s) {
+  sendSysex([0x10, ...Array.from({ length: 5 }, (_, i) => Math.floor(s / 2 ** (7 * i)) & 0x7F), 1]);
+}
 $("seedSend").onclick = () => {
   const s = parseInt($("seedIn").value, 16);
-  if (!Number.isFinite(s)) return;
-  sendSysex([0x10, ...Array.from({ length: 5 }, (_, i) => Math.floor(s / 2 ** (7 * i)) & 0x7F), 1]);
+  if (Number.isFinite(s)) sendSeed(s);
+};
+$("random").onclick = () => {
+  if (!midiOut) { log("Ligue uma saída MIDI antes de gerar um patch aleatório."); return; }
+  const s = crypto.getRandomValues(new Uint32Array(1))[0];
+  sendSeed(s);
+  log("Patch aleatório solicitado (seed 0x" + s.toString(16).toUpperCase().padStart(8, "0") + ").");
 };
 
 function sendCC(ch, cc, v) { midiOut && midiOut.send([0xB0 | ch, cc, v]); }
@@ -609,8 +648,8 @@ function clearScope() {
   const dpr = window.devicePixelRatio || 1, w = scopeCv.clientWidth, h = scopeCv.clientHeight;
   if (scopeCv.width !== Math.round(w * dpr)) { scopeCv.width = Math.round(w * dpr); scopeCv.height = Math.round(h * dpr); }
   scopeCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  scopeCtx.fillStyle = "#0b0d0f"; scopeCtx.fillRect(0, 0, w, h);
-  scopeCtx.strokeStyle = "#23282d"; scopeCtx.lineWidth = 1;
+  scopeCtx.fillStyle = "#17191C"; scopeCtx.fillRect(0, 0, w, h);
+  scopeCtx.strokeStyle = "#34383D"; scopeCtx.lineWidth = 1;
   scopeCtx.beginPath(); scopeCtx.moveTo(0, h / 2); scopeCtx.lineTo(w, h / 2); scopeCtx.stroke();
   return [w, h];
 }
@@ -619,7 +658,7 @@ function drawScope(wave, peak) {
   const len = 1024;
   let start = 0;
   for (let i = 1; i < wave.length - len; i++) if (wave[i - 1] < 0 && wave[i] >= 0) { start = i; break; }
-  scopeCtx.strokeStyle = "#4cd964"; scopeCtx.lineWidth = 2; scopeCtx.beginPath();
+  scopeCtx.strokeStyle = "#E66B4E"; scopeCtx.lineWidth = 2; scopeCtx.beginPath();
   for (let x = 0; x < w; x++) {
     const s = wave[start + Math.floor(x / w * len)];
     const y = h / 2 - Math.max(-1, Math.min(1, s)) * (h / 2 - 2);
