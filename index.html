@@ -73,6 +73,7 @@
 </section>
 
 <section>
+  <div class="row">Faixas: <select id="trackCount"><option>Auto</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
   <label class="s">Master Vol <input data-ch="0" data-cc="7" type="range" min="0" max="127"><span></span></label>
   <label class="s">Master Rev <input data-ch="0" data-cc="91" type="range" min="0" max="127"><span></span></label>
   <div class="tracks" id="tracks"></div>
@@ -110,33 +111,144 @@ const log = t => { const l = $("log"); l.textContent = (t + "\n" + l.textContent
 const dec7 = bytes => bytes.reduce((a, b, i) => a + ((b & 0x7F) << (7 * i)), 0);
 
 const sliders = {};
+const mix = {
+  vol: [null, null, null, null], muted: [false, false, false, false], follow: [null, null, null, null],
+  solo: null, soloPrev: null, soloUntil: 0, pendingFollow: null, pendingFollowUntil: 0, echoes: [],
+};
+const now = () => performance.now();
+function registerEcho(ch, v) { mix.echoes.push({ ch, v, until: now() + 1000 }); }
+function consumeEcho(ch, v) {
+  mix.echoes = mix.echoes.filter(e => e.until > now());
+  const i = mix.echoes.findIndex(e => e.ch === ch && e.v === v);
+  if (i < 0) return false;
+  mix.echoes.splice(i, 1); return true;
+}
+function bindSlider(input, val, ch, cc) {
+  input.oninput = () => { val.textContent = input.value; userSlider(ch, cc, +input.value); };
+  sliders[ch + ":" + cc] = { input, val };
+}
 function mkSlider(host, ch, cc, label) {
   const el = document.createElement("label");
   el.className = "s";
   el.innerHTML = `${label}<input type="range" min="0" max="127"><span>0</span>`;
-  const input = el.querySelector("input"), val = el.querySelector("span");
-  input.oninput = () => { val.textContent = input.value; sendCC(ch, cc, +input.value); };
-  sliders[ch + ":" + cc] = { input, val };
+  bindSlider(el.querySelector("input"), el.querySelector("span"), ch, cc);
   host.appendChild(el);
 }
-document.querySelectorAll("[data-ch]").forEach(input => {
-  const ch = +input.dataset.ch, cc = +input.dataset.cc, val = input.nextElementSibling;
-  input.oninput = () => { val.textContent = input.value; sendCC(ch, cc, +input.value); };
-  sliders[ch + ":" + cc] = { input, val };
-});
+document.querySelectorAll("[data-ch]").forEach(input => bindSlider(input, input.nextElementSibling, +input.dataset.ch, +input.dataset.cc));
 for (let t = 1; t <= 4; t++) {
   const d = document.createElement("div");
   d.className = "track";
-  d.innerHTML = `<b>Faixa ${t}</b> <span class="info" id="eng${t}"></span>`;
+  d.innerHTML = `<b>Faixa ${t}</b> <span class="info" id="eng${t}"></span>
+    <div class="row"><button id="mute${t}">M</button><button id="solo${t}">S</button><button id="fol${t}">Follow</button></div>`;
   mkSlider(d, t, 91, "Reverb");
   mkSlider(d, t, 7, "Volume");
   $("tracks").appendChild(d);
+  $("mute" + t).onclick = () => toggleMute(t - 1);
+  $("solo" + t).onclick = () => toggleSolo(t - 1);
+  $("fol" + t).onclick = () => toggleFollow(t - 1);
 }
 function setSlider(ch, cc, v) {
   const s = sliders[ch + ":" + cc];
   if (s) { s.input.value = v; s.val.textContent = v; }
 }
-
+function renderTrack(t) {
+  const shown = mix.muted[t] ? 0 : mix.vol[t];
+  if (shown != null) setSlider(t + 1, 7, shown);
+  $("mute" + (t + 1)).classList.toggle("on", mix.muted[t]);
+  $("solo" + (t + 1)).classList.toggle("on", mix.solo === t);
+  const f = $("fol" + (t + 1));
+  f.classList.toggle("on", mix.follow[t] === true);
+  f.textContent = mix.follow[t] === true ? "Follow ✓" : "Follow";
+}
+const renderAll = () => [0, 1, 2, 3].forEach(renderTrack);
+function userSlider(ch, cc, v) {
+  if (cc === 7 && ch >= 1) {
+    const t = ch - 1;
+    mix.vol[t] = v;
+    if (mix.muted[t] && mix.solo === null) mix.muted[t] = false;
+    if (mix.solo !== null && mix.solo !== t) { renderTrack(t); return; }
+    renderTrack(t);
+    sendCC(ch, 7, mix.muted[t] ? 0 : v);
+    return;
+  }
+  if (cc === 91) {
+    if (ch === 0) { registerEcho(0, v); mix.follow = [true, true, true, true]; }
+    else mix.follow[ch - 1] = false;
+    renderAll();
+  }
+  sendCC(ch, cc, v);
+}
+function toggleMute(t) {
+  if (!midiOut) return;
+  if (mix.solo !== null && mix.solo !== t) { log("O mute está controlado pelo solo; desative o solo primeiro."); return; }
+  if (mix.vol[t] == null) { log(`Volume da faixa ${t + 1} ainda não recebido.`); return; }
+  mix.muted[t] = !mix.muted[t];
+  if (mix.solo === t && mix.soloPrev) mix.soloPrev[t] = mix.muted[t];
+  sendCC(t + 1, 7, mix.muted[t] ? 0 : mix.vol[t]);
+  renderTrack(t);
+}
+function toggleSolo(t) {
+  if (!midiOut) return;
+  if (mix.vol.some(v => v == null)) { log("Aguarde a receção dos volumes das quatro faixas antes do solo."); return; }
+  const off = mix.solo === t;
+  const desired = off ? (mix.soloPrev || [false, false, false, false]) : [true, true, true, true].map((m, i) => i !== t);
+  const previous = [...mix.muted];
+  desired.forEach((m, i) => sendCC(i + 1, 7, m ? 0 : mix.vol[i]));
+  mix.muted = [...desired];
+  mix.soloUntil = now() + 1500;
+  if (off) { mix.solo = null; mix.soloPrev = null; }
+  else { if (mix.solo === null) mix.soloPrev = previous; mix.solo = t; }
+  renderAll();
+}
+function setFollowStates(desired) {
+  if (!midiOut) return false;
+  if (desired.some(Boolean)) {
+    const m = sliders["0:91"] && +sliders["0:91"].input.value;
+    registerEcho(0, m); sendCC(0, 91, m);
+  }
+  desired.forEach((f, i) => { if (!f) sendCC(i + 1, 91, +sliders[(i + 1) + ":91"].input.value); });
+  mix.follow = [...desired];
+  mix.pendingFollow = [...desired]; mix.pendingFollowUntil = now() + 1000;
+  renderAll();
+  return true;
+}
+function toggleFollow(t) {
+  if (mix.follow[t] == null) { log("Sincronize o estado do mixer antes de alterar o follow."); return; }
+  const d = [...mix.follow]; d[t] = !d[t]; setFollowStates(d);
+}
+function onMixerCC(ch, cc, v) {
+  if (ch >= 1 && ch <= 4) {
+    const t = ch - 1;
+    if (cc === 7) {
+      if (mix.solo !== null || now() < mix.soloUntil || mix.muted[t]) return;
+      mix.vol[t] = v; renderTrack(t);
+    } else {
+      setSlider(ch, 91, v);
+      if (!consumeEcho(ch, v) && now() >= mix.pendingFollowUntil) { mix.follow[t] = false; renderAll(); }
+    }
+    return;
+  }
+  setSlider(ch, cc, v);
+  if (ch === 0 && cc === 91 && !consumeEcho(0, v) && now() >= mix.pendingFollowUntil) { mix.follow = [true, true, true, true]; renderAll(); }
+}
+function onMixerSysex(p) {
+  for (let i = 0; i < 4; i++) {
+    if (!mix.muted[i] && now() >= mix.soloUntil) mix.vol[i] = p[i];
+    setSlider(i + 1, 91, p[4 + i]);
+  }
+  if (now() >= mix.pendingFollowUntil) mix.follow = [0, 1, 2, 3].map(i => !!(p[8] & (1 << i)));
+  renderAll();
+}
+function mixerSnapshot() {
+  const m = { 0: {} };
+  [7, 91].forEach(cc => { const s = sliders["0:" + cc]; if (s) m[0][cc] = +s.input.value; });
+  for (let t = 0; t < 4; t++) {
+    m[t + 1] = { 91: +sliders[(t + 1) + ":91"].input.value };
+    const v = mix.vol[t] != null ? mix.vol[t] : +sliders[(t + 1) + ":7"].input.value;
+    m[t + 1][7] = v;
+  }
+  return m;
+}
 SCALES.forEach((n, i) => $("scale").add(new Option(n, i)));
 $("scale").onchange = () => sendCC(0, 9, +$("scale").value);
 PATCH_TYPES.forEach((n, i) => {
@@ -169,7 +281,7 @@ function onMessage(e) {
   if ((d[0] & 0xF0) === 0xB0) {
     const ch = d[0] & 0x0F, cc = d[1], v = d[2];
     if (cc === 9 && ch === 0) { $("scale").value = v; }
-    else if (cc === 7 || cc === 91) setSlider(ch, cc, v);
+    else if (cc === 7 || cc === 91) onMixerCC(ch, cc, v);
     return;
   }
   if (d[0] !== 0xF0 || d[1] !== HDR[0] || d[2] !== HDR[1] || d[3] !== HDR[2]) return;
@@ -205,7 +317,7 @@ function onMessage(e) {
     const name = String.fromCharCode(...p.slice(3, end < 0 ? undefined : end));
     if (p[0] < 4) $("eng" + (p[0] + 1)).textContent = name;
   } else if (cmd === 0x28 && p.length >= 9) {
-    for (let i = 0; i < 4; i++) { setSlider(i + 1, 7, p[i]); setSlider(i + 1, 91, p[4 + i]); }
+    onMixerSysex(p);
   } else if (cmd === 0x23 && p.length >= 2) {
     log(`Firmware RND: ${p[0]}.${p[1]}`);
   }
@@ -289,6 +401,13 @@ $("kbHold").onclick = () => {
   if (!state.hold) { held.forEach(h => { midiOut && midiOut.send([0x80 | h.ch, h.note, 0]); h.el.classList.remove("down"); }); held.clear(); }
 };
 
+function setTrackCount(sel) {
+  if (!midiOut) { log("Ligue o MIDI antes de alterar o número de faixas."); return false; }
+  $("trackCount").value = sel;
+  sendSysex([0x1F, sel === "Auto" ? 127 : +sel]);
+  return true;
+}
+$("trackCount").onchange = () => setTrackCount($("trackCount").value);
 const ENGINES = ["Subtractive","FM","Acid (303)","Noise","Speech","Plucked String","SuperSaw","Harmonic"];
 const STORE = "rndPresets";
 let presetToken = 0;
@@ -303,18 +422,17 @@ function refreshPresets(select) {
 function capturePreset() {
   const seed = +$("seed").dataset.v;
   if (!$("seed").dataset.v) return null;
-  const engines = {}, mixer = {};
+  const engines = {};
   for (let t = 1; t <= 4; t++) {
     const name = $("eng" + t).textContent;
     if (ENGINES.includes(name)) engines[t - 1] = name;
   }
-  for (let ch = 0; ch <= 4; ch++) {
-    mixer[ch] = {};
-    [7, 91].forEach(cc => { const s = sliders[ch + ":" + cc]; if (s) mixer[ch][cc] = +s.input.value; });
-  }
+  const mixer = mixerSnapshot();
   return {
     seed, type: state.type, bpm: +$("bpm").value, scale: +$("scale").value,
-    key: state.rootNote, engines, mixer,
+    key: state.rootNote, engines, mixer, muted: [...mix.muted],
+    reverbFollow: mix.follow.every(f => typeof f === "boolean") ? [...mix.follow] : null,
+    trackCount: $("trackCount").value,
     locks: { type: state.typeLocked, scale: state.scaleLocked, key: state.keyLocked },
   };
 }
@@ -366,10 +484,22 @@ function applyPreset(name, p, token) {
   Object.entries(p.mixer || {}).forEach(([ch, controls]) => {
     Object.entries(controls).forEach(([cc, v]) => {
       if ((+cc === 7 || +cc === 91) && Number.isInteger(v) && v >= 0 && v <= 127) {
-        sendCC(+ch, +cc, v); setSlider(+ch, +cc, v);
+        if (+cc === 7 && +ch >= 1) mix.vol[+ch - 1] = v;
+        else { sendCC(+ch, +cc, v); setSlider(+ch, +cc, v); }
       }
     });
   });
+  if (Array.isArray(p.muted) && mix.solo === null) {
+    for (let t = 0; t < 4; t++) {
+      mix.muted[t] = !!p.muted[t];
+      if (mix.vol[t] != null) sendCC(t + 1, 7, mix.muted[t] ? 0 : mix.vol[t]);
+    }
+  } else {
+    for (let t = 0; t < 4; t++) if (mix.vol[t] != null && !mix.muted[t]) sendCC(t + 1, 7, mix.vol[t]);
+  }
+  renderAll();
+  if (Array.isArray(p.reverbFollow) && p.reverbFollow.length >= 4) setFollowStates(p.reverbFollow.slice(0, 4).map(Boolean));
+  if (["Auto", "1", "2", "3", "4"].includes(p.trackCount)) setTrackCount(p.trackCount);
   if (Number.isInteger(p.key) && p.key >= 0 && p.key < 12) {
     const note = 60 + p.key;
     midiOut.send([0x90, note, 100]);
