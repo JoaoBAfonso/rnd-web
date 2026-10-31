@@ -206,7 +206,46 @@
   #random::before { background: conic-gradient(from 0deg, #E66B4E, #F07B5E, #55C6B3, #E66B4E 50%, #F07B5E, #55C6B3, #E66B4E); }
   #random::after { background: radial-gradient(120% 140% at 50% 0%, rgba(230,107,78,.22), transparent 60%), linear-gradient(180deg, #252A2E, #17191C); }
   #random .die { color: #55C6B3; filter: drop-shadow(0 0 10px rgba(85,198,179,.6)); }
-  #random .rt b { background: linear-gradient(180deg, #F6B19F, #E66B4E); -webkit-background-clip: text; background-clip: text; color: transparent; }</style>
+  #random .rt b { background: linear-gradient(180deg, #F6B19F, #E66B4E); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  /* ---- Refinamento: centrado, alinhado, detalhado ---- */
+  main { gap: 14px; padding: 14px 12px 40px; }
+  header, section { padding: 16px 16px 14px; border-radius: 22px; position: relative; }
+  section::before { content: ""; position: absolute; left: 22px; right: 22px; top: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(var(--tc),.55), transparent); opacity: .8; }
+  section h2 { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 2px 0 12px; font-size: 11.5px; letter-spacing: .32em; text-align: center; }
+  section h2::before, section h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.14)); }
+  section h2::after { transform: scaleX(-1); }
+  .row { justify-content: center; gap: 10px; margin: 8px 0; }
+  .row > .lbl, .row > label { min-width: 0; }
+  hr { margin: 6px 0; border-top: 1px solid transparent; background: linear-gradient(90deg, transparent, rgba(255,255,255,.12), transparent) top / 100% 1px no-repeat; height: 1px; }
+  button, select, input:not([type=range]):not([type=file]) { border-width: 1px; border-color: rgba(255,255,255,.12); background-image: linear-gradient(180deg, rgba(255,255,255,.05), transparent); transition: border-color .2s, background-color .2s, transform .12s, box-shadow .2s; }
+  button:hover:not(:disabled):not(.on):not(.primary) { border-color: rgba(var(--tc),.6); background-color: rgba(255,255,255,.04); }
+  button.on, button.primary { border-color: rgba(255,255,255,.25); box-shadow: 0 6px 16px -6px rgba(var(--tc),.7), inset 0 1px 0 rgba(255,255,255,.3); }
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+  header { padding: 18px 16px 16px; background: linear-gradient(180deg, rgba(26,29,33,.85), rgba(16,18,20,.85)); }
+  .head { flex-direction: column; gap: 14px; }
+  .head .logo { width: min(270px, 80%); }
+  .conn { width: 100%; flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 14px 10px; background: rgba(255,255,255,.03); border-color: rgba(255,255,255,.08); }
+  .conn .logo-ba { margin: 2px 0 0; opacity: .9; }
+  .conn > button#midiBtn { min-width: 150px; }
+  .row:has(#scope) { position: relative; margin: 6px 0 0; display: block; }
+  #scope { display: block; width: 100%; height: 200px; border-radius: 16px; border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 0 40px rgba(0,0,0,.5), 0 0 24px -8px rgba(var(--tc),.45); background: radial-gradient(120% 100% at 50% 100%, rgba(var(--tc),.08), transparent 70%), #0e1012; }
+  #scopeDb { position: absolute; right: 12px; bottom: 8px; font-size: 14px; font-weight: 700; letter-spacing: .06em; font-variant-numeric: tabular-nums; color: var(--teal); text-shadow: 0 0 10px rgba(85,198,179,.5); pointer-events: none; }
+  #scopeModes { margin: 0 0 10px; gap: 6px; }
+  #random { margin: 2px 0 6px; }
+  .row:has(#seedIn) { margin-top: 10px; }
+  .row:has(#seedIn) .lbl { margin-right: 2px; }
+  label.s { grid-template-columns: 92px 1fr 44px; padding: 2px 0; }
+  .tracks { gap: 10px; }
+  .track { padding: 10px 12px; background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(0,0,0,.2)), var(--ink); border-color: rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+  .trow { gap: 8px; margin-bottom: 6px; }
+  .track b { font-size: 18px; width: 22px; }
+  #kb { height: 132px; border-radius: 0 0 10px 10px; padding-top: 2px; filter: drop-shadow(0 10px 18px rgba(0,0,0,.45)); }
+  #log { border-radius: 12px; padding: 10px 12px; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.06); }
+  .info { text-align: center; }
+  main::after { content: "unRND · Cymaforma RND Performance Controller"; display: block; text-align: center; font-size: 10px; letter-spacing: .28em; text-transform: uppercase; color: rgba(255,255,255,.28); padding: 6px 0 0; }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23E66B4E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(180deg, rgba(255,255,255,.05), transparent); background-repeat: no-repeat, no-repeat; background-position: right 12px center, 0 0; }
+  .row:has(> .lbl:first-child) { justify-content: flex-start; }
+  .row:has(#seedIn) { justify-content: center; }</style>
 </head>
 <body>
 <canvas id="bg" aria-hidden="true"></canvas>
