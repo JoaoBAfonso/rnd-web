@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="pt">
 <head>
 <meta charset="utf-8">
@@ -24,6 +24,20 @@
   .conn { flex: 1 1 260px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 6px 12px; text-align: center; }
   .conn .row { justify-content: center; }
   .conn select { max-width: 46%; }
+  .conn { position: relative; }
+  .conn > button#midiBtn { background: var(--gray); color: var(--accent); border-width: 1px; border-radius: 12px; }
+  .conn > button#midiBtn.on { color: var(--teal); background: var(--gray); border-color: var(--teal); }
+  .corner { position: absolute; right: 8px; bottom: 8px; min-height: 26px !important; padding: 2px 8px !important; border-radius: 8px; background: var(--gray); }
+  #scrim { position: fixed; inset: 0; background: rgba(8,10,12,.62); display: flex; align-items: center; justify-content: center; z-index: 10; padding: 12px; }
+  #scrim[hidden], #blank[hidden] { display: none; }
+  .modal { width: min(440px, 100%); max-height: 92vh; overflow: auto; background: var(--panel); border: 2px solid var(--line); border-radius: 18px; padding: 12px 18px 16px; }
+  .modal select { width: 100%; margin-bottom: 8px; }
+  .mtitle { display: flex; justify-content: space-between; align-items: center; }
+  .mtitle h2 { font-size: 14px; margin: 0; }
+  .x { border: 0 !important; font-size: 20px !important; padding: 0 8px !important; }
+  .lbl2 { font-weight: 700; font-size: 11px; letter-spacing: .08em; margin: 8px 0 3px; }
+  #blank { position: fixed; inset: 0; background: var(--bg); z-index: 9; padding: 24px 20px; }
+  #home { background: var(--gray); border-color: var(--gray); }
   .logo-ba { width: 170px; max-width: 80%; height: auto; margin-top: 4px; }
   h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
@@ -73,22 +87,42 @@
   <div class="head">
     <img class="logo" src="logo-unrnd.png" alt="unRND - Cymaforma RND Performance Controller">
     <div class="conn">
-      <div class="row">
-        <button id="connect">Ligar MIDI</button>
-        <button id="sync">Sincronizar</button>
-      </div>
-      <div class="row">
-        <select id="inSel"></select>
-        <select id="outSel"></select>
-      </div>
-      <div class="info" id="status">Sem ligação.</div>
+      <button id="midiBtn">○ MIDI</button>
+      <div id="recInfo" class="info">Fonte de áudio não selecionada.</div>
       <img class="logo-ba" src="logo-ba.png" alt="Bernardo Afonso">
+      <button id="openBlank" class="corner" title="Página em branco">↗</button>
     </div>
   </div>
 </header>
 
+<div id="scrim" hidden>
+  <div class="modal">
+    <div class="mtitle"><h2>Ligação MIDI</h2><button id="modalClose" class="x">✕</button></div>
+    <div class="info" id="status">Sem ligação.</div>
+    <div class="lbl2">IN</div>
+    <select id="inSel"></select>
+    <div class="lbl2">OUT</div>
+    <select id="outSel"></select>
+    <div class="row">
+      <button id="refresh">Refresh</button>
+      <button id="connect" class="primary">Connect</button>
+      <button id="sync">Sincronizar</button>
+    </div>
+    <hr>
+    <h2>Track Activity</h2>
+    <select id="audioSel"></select>
+    <div class="row">
+      <button id="audioConnect" class="primary">Ligar áudio</button>
+      <button id="refreshAudio">Refresh audio</button>
+    </div>
+  </div>
+</div>
+
+<div id="blank" hidden><button id="home">←  Home</button></div>
+
 <section>
   <button id="random">Random<br>RND</button>
+  <div class="row"><span class="lbl">Seed</span> <span class="info" id="seed">—</span> <input id="seedIn" size="8" placeholder="Seed (hex)"> <button id="seedSend">Enviar seed</button></div>
   <hr>
   <div class="row">
     <span class="lbl">Nº Faixas</span>
@@ -111,8 +145,6 @@
   <label class="s">All Reverb <input data-ch="0" data-cc="91" type="range" min="0" max="127"><span></span></label>
   <label class="s">All Volume <input data-ch="0" data-cc="7" type="range" min="0" max="127"><span></span></label>
   <div class="tracks" id="tracks"></div>
-  <hr>
-  <div class="row"><span class="lbl">Seed</span> <span class="info" id="seed">—</span> <input id="seedIn" size="8" placeholder="Seed (hex)"> <button id="seedSend">Enviar seed</button></div>
 </section>
 
 <section>
@@ -152,12 +184,7 @@
 </section>
 
 <section>
-  <h2>Áudio</h2>
-  <div class="row">
-    <button id="audioConnect">Ligar áudio</button>
-    <select id="audioSel"></select>
-    <span class="info" id="recInfo">Áudio desligado.</span>
-  </div>
+  <h2>Scope</h2>
   <div class="row"><canvas id="scope"></canvas><span id="scopeDb" class="info">—</span></div>
   <div id="meters"></div>
 </section>
@@ -882,10 +909,21 @@ function bindPorts() {
   midiOut = access.outputs.get($("outSel").value) || null;
   if (midiIn) midiIn.onmidimessage = onMessage;
   $("status").textContent = midiIn && midiOut ? `Ligado: ${midiIn.name} / ${midiOut.name}` : "Selecione entrada e saída MIDI.";
+  const ok = !!(midiIn && midiOut);
+  $("midiBtn").textContent = (ok ? "● " : "○ ") + "MIDI"; $("midiBtn").classList.toggle("on", ok);
   if (midiIn && midiOut) requestSync();
 }
 $("inSel").onchange = $("outSel").onchange = bindPorts;
 $("sync").onclick = requestSync;
+const showModal = on => { $("scrim").hidden = !on; if (on && navigator.mediaDevices) fillAudioDevices().catch(() => {}); };
+$("midiBtn").onclick = () => showModal(true);
+$("modalClose").onclick = () => showModal(false);
+$("scrim").onclick = e => { if (e.target === $("scrim")) showModal(false); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") showModal(false); });
+$("openBlank").onclick = () => { $("blank").hidden = false; };
+$("home").onclick = () => { $("blank").hidden = true; };
+$("refresh").onclick = () => { if (access) fillPorts(); else $("connect").click(); };
+$("refreshAudio").onclick = () => fillAudioDevices().catch(e => log("Áudio: " + e.message));
 $("connect").onclick = async () => {
   if (!navigator.requestMIDIAccess) { $("status").textContent = "Web MIDI não suportado neste browser (use Chrome/Edge)."; return; }
   try {
