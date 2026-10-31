@@ -15,6 +15,12 @@
   main { max-width: 760px; margin: 0 auto; padding: 8px 10px 24px; display: flex; flex-direction: column; gap: 10px; }
   header, section { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 10px 14px; }
   header { background: var(--ink); }
+  .head { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; }
+  .head .logo { width: 250px; max-width: 100%; height: auto; }
+  .conn { flex: 1 1 260px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 6px 12px; text-align: center; }
+  .conn .row { justify-content: center; }
+  .conn select { max-width: 46%; }
+  .logo-ba { width: 170px; max-width: 80%; height: auto; margin-top: 4px; }
   h2 { margin: 0 0 6px; font-size: 12px; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
   .row > label, .lbl { color: var(--accent); font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
@@ -57,13 +63,21 @@
 <body>
 <main>
 <header>
-  <div class="row">
-    <button id="connect">Ligar MIDI</button>
-    <select id="inSel"></select>
-    <select id="outSel"></select>
-    <button id="sync">Sincronizar</button>
+  <div class="head">
+    <img class="logo" src="logo-unrnd.png" alt="unRND - Cymaforma RND Performance Controller">
+    <div class="conn">
+      <div class="row">
+        <button id="connect">Ligar MIDI</button>
+        <button id="sync">Sincronizar</button>
+      </div>
+      <div class="row">
+        <select id="inSel"></select>
+        <select id="outSel"></select>
+      </div>
+      <div class="info" id="status">Sem ligação.</div>
+      <img class="logo-ba" src="logo-ba.png" alt="Bernardo Afonso">
+    </div>
   </div>
-  <div class="info" id="status">Sem ligação.</div>
 </header>
 
 <section>
