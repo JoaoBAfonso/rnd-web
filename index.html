@@ -153,9 +153,19 @@
   @media (max-width: 420px) { main { padding: 8px 8px 24px; } header, section { padding: 10px 12px; } }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }  label.s { grid-template-columns: 100px 1fr 44px; white-space: nowrap; }
   #presetSel { min-width: 150px; }
-</style>
+
+  /* ---- Fundo 3D ---- */
+  #bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  main { position: relative; z-index: 1; }
+  header, section { background: linear-gradient(180deg, rgba(33,38,42,.50) 0%, rgba(29,33,37,.40) 100%); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); border-color: rgba(255,255,255,.08); }
+  header { background: linear-gradient(180deg, rgba(27,30,33,.5), rgba(23,25,28,.4)); }
+  .conn { background: rgba(29,33,37,.6); }
+  .track { background: rgba(17,19,21,.62); }
+  #log { background: rgba(14,16,18,.7); }
+  body { background: #0b0d0f; }</style>
 </head>
 <body>
+<canvas id="bg" aria-hidden="true"></canvas>
 <main>
 <header>
   <div class="head">
@@ -472,6 +482,7 @@ function requestSync() { sendSysex([0x19]); sendSysex([0x18]); }
 
 function onMessage(e) {
   const d = e.data;
+  viz.pulse = Math.min(1, viz.pulse + 0.35);
   if ((d[0] & 0xF0) === 0xB0) {
     const ch = d[0] & 0x0F, cc = d[1], v = d[2];
     if (cc === 9 && ch === 0) { $("scale").value = v; }
@@ -841,6 +852,7 @@ function clearScope() {
   return [w, h];
 }
 function drawScope(wave, peak) {
+  viz.wave = wave; viz.peak = peak; viz.audioAt = performance.now();
   const [w, h] = clearScope();
   const len = 1024;
   let start = 0;
@@ -1010,6 +1022,82 @@ if ("serviceWorker" in navigator && window.isSecureContext) {
   navigator.serviceWorker.register("sw.js").catch(e => log("Service worker: " + e.message));
 }
 if (!window.isSecureContext) $("status").textContent = "Contexto não seguro: abra via http://localhost ou HTTPS.";
+const viz = { wave: null, peak: 0, audioAt: 0, pulse: 0, energy: 0 };
+(() => {
+  const cv = $("bg"), g = cv.getContext("2d");
+  const ROWS = 30, COLS = 72, STEP = 70;
+  const rows = [];
+  let w = 0, h = 0, dpr = 1, last = 0, lastPush = 0;
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    w = innerWidth; h = innerHeight;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener("resize", resize); resize();
+  function newRow(t) {
+    const r = new Float32Array(COLS);
+    const live = viz.wave && performance.now() - viz.audioAt < 600;
+    const amp = 0.5 + viz.pulse * 0.5;
+    for (let c = 0; c < COLS; c++) {
+      const x = c / (COLS - 1), edge = Math.sin(Math.PI * x);
+      let v = Math.sin(x * 9 + t * 0.0011) * 0.5 + Math.sin(x * 23 - t * 0.0017) * 0.3 + Math.sin(x * 4 + t * 0.0006) * 0.4;
+      v *= amp * edge;
+      if (live) {
+        const s = viz.wave[Math.floor(x * (viz.wave.length - 1))] || 0;
+        v += Math.max(-1.4, Math.min(1.4, s * 2.2)) * edge * 0.9;
+      }
+      r[c] = v;
+    }
+    return r;
+  }
+  for (let i = 0; i < ROWS; i++) rows.push(newRow(-i * STEP * 4));
+  const PX = Array.from({ length: ROWS }, () => new Float32Array(COLS)), PY = Array.from({ length: ROWS }, () => new Float32Array(COLS));
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (document.hidden || t - last < 33) return;
+    last = t;
+    viz.pulse *= 0.93;
+    if (still) { if (t > 100) return; }
+    if (t - lastPush > STEP) { rows.pop(); rows.unshift(newRow(t)); lastPush = t; }
+    const frac = Math.min(1, (t - lastPush) / STEP);
+    g.clearRect(0, 0, w, h);
+    const top = h * 0.10, span = h * 0.95, gain = h * 0.36;
+    for (let i = ROWS - 1; i >= 0; i--) {
+      const d = (i + frac) / ROWS, p = Math.pow(d, 1.7);
+      const scale = 0.22 + d * 1.25, y0 = top + p * span;
+      const a = Math.min(0.95, 0.08 + d * 1.1);
+      const row = rows[i], px = PX[i], py = PY[i];
+      g.beginPath();
+      for (let c = 0; c < COLS; c++) {
+        const x = w / 2 + (c / (COLS - 1) - 0.5) * w * 1.7 * scale;
+        const y = y0 - row[c] * gain * scale * 0.55;
+        px[c] = x; py[c] = y;
+        c ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      g.strokeStyle = `rgba(230,107,78,${a * 0.8})`; g.lineWidth = 0.8 + d * 1.4; g.stroke();
+      const sz = 0.8 + d * 2.6;
+      for (let c = 0; c < COLS; c += 2) {
+        const x = w / 2 + (c / (COLS - 1) - 0.5) * w * 1.7 * scale;
+        const v = row[c], y = y0 - v * gain * scale * 0.55;
+        const hot = Math.min(1, Math.abs(v) * 1.4);
+        g.fillStyle = hot > 0.55 ? `rgba(85,198,179,${a + 0.15})` : `rgba(240,123,94,${a + hot * 0.3})`;
+        g.fillRect(x - sz / 2, y - sz / 2, sz, sz);
+      }
+    }
+    g.lineWidth = 0.6;
+    for (let c = 0; c < COLS; c += 4) {
+      g.beginPath();
+      for (let i = 0; i < ROWS; i++) i ? g.lineTo(PX[i][c], PY[i][c]) : g.moveTo(PX[i][c], PY[i][c]);
+      g.strokeStyle = "rgba(230,107,78,.10)"; g.stroke();
+    }
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, "rgba(11,13,15,.95)"); grad.addColorStop(.35, "rgba(11,13,15,0)"); grad.addColorStop(1, "rgba(11,13,15,.25)");
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  }
+  requestAnimationFrame(frame);
+})();
 function paintRanges() {
   document.querySelectorAll("input[type=range]").forEach(r => {
     const min = +r.min || 0, max = +r.max || 100;
