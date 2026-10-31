@@ -201,7 +201,12 @@
   @keyframes sheen { 0%, 55% { left: -80px; } 100% { left: 110%; } }
   section { background: linear-gradient(180deg, rgba(34,38,43,.72), rgba(24,27,31,.72)); border: 1px solid transparent; background-clip: padding-box; box-shadow: 0 0 0 1px rgba(255,255,255,.07), 0 24px 50px -24px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.06); -webkit-backdrop-filter: blur(10px) saturate(1.2); backdrop-filter: blur(10px) saturate(1.2); }
   section h2 { background: linear-gradient(90deg, var(--accent2), rgba(var(--tc),.5)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  @media (prefers-reduced-motion: reduce) { #random::before, #random .rc::after { animation: none; } }</style>
+  @media (prefers-reduced-motion: reduce) { #random::before, #random .rc::after { animation: none; } }
+  /* ---- Random na paleta ---- */
+  #random::before { background: conic-gradient(from 0deg, #E66B4E, #F07B5E, #55C6B3, #E66B4E 50%, #F07B5E, #55C6B3, #E66B4E); }
+  #random::after { background: radial-gradient(120% 140% at 50% 0%, rgba(230,107,78,.22), transparent 60%), linear-gradient(180deg, #252A2E, #17191C); }
+  #random .die { color: #55C6B3; filter: drop-shadow(0 0 10px rgba(85,198,179,.6)); }
+  #random .rt b { background: linear-gradient(180deg, #F6B19F, #E66B4E); -webkit-background-clip: text; background-clip: text; color: transparent; }</style>
 </head>
 <body>
 <canvas id="bg" aria-hidden="true"></canvas>
@@ -241,7 +246,11 @@
   </div>
 </div>
 
-<section class="metersec"><div id="meters"></div></section>
+<section>
+  <h2>Scope</h2>
+  <div class="row" id="scopeModes"></div>
+  <div class="row"><canvas id="scope"></canvas><span id="scopeDb" class="info">—</span></div>
+</section>
 
 <div id="blank" hidden><button id="home">←  Home</button></div>
 
@@ -260,7 +269,7 @@
     </svg>
     <span class="rc">
       <svg class="die" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.5" fill="currentColor"/></svg>
-      <span class="rt"><b>RANDOM</b><em>RND · nova combinação</em></span>
+      <span class="rt"><b>RANDOM</b></span>
     </span>
   </button>
   <div class="row"><span class="lbl">Seed</span> <span class="info" id="seed">—</span> <input id="seedIn" size="8" placeholder="Seed (hex)"> <button id="seedSend">Enviar seed</button></div>
@@ -324,11 +333,7 @@
   <div id="kb"></div>
 </section>
 
-<section>
-  <h2>Scope</h2>
-  <div class="row" id="scopeModes"></div>
-  <div class="row"><canvas id="scope"></canvas><span id="scopeDb" class="info">—</span></div>
-</section>
+
 
 <section><h2>Log</h2><div id="log"></div></section>
 </main>
@@ -896,25 +901,7 @@ class Rec extends AudioWorkletProcessor {
 }
 registerProcessor("rec", Rec);`;
 const rec = { n: 2, ctx: null, stream: null, node: null, active: false, chunks: [], bytes: 0, start: 0, timer: null, wake: null, channels: 0 };
-const meterEls = [];
-for (let c = 0; c < REC_CHANNELS; c++) {
-  const m = document.createElement("div");
-  m.className = "m"; m.innerHTML = `<span>${c + 1}</span><i></i><b></b>`;
-  $("meters").appendChild(m); meterEls.push(m);
-}
-const meterHold = [];
-const setMeter = (c, peak) => {
-  const db = peak > 0 ? 20 * Math.log10(peak) : -90;
-  const pct = Math.max(0, Math.min(100, (db + 60) / 60 * 100));
-  const m = meterEls[c];
-  m.querySelector("i").style.clipPath = `inset(${100 - pct}% 0 0 0)`;
-  const hold = meterHold[c] || (meterHold[c] = { v: 0, t: 0 });
-  const t = performance.now();
-  if (pct >= hold.v || t - hold.t > 900) { hold.v = pct; hold.t = t; }
-  m.querySelector("b").style.bottom = hold.v + "%";
-  m.querySelector("b").style.opacity = hold.v > 1 ? 1 : 0;
-  m.querySelector("span").textContent = db <= -90 ? (c + 1) : Math.round(db);
-};
+const setMeter = () => {};
 const scopeCv = $("scope"), scopeCtx = scopeCv.getContext("2d");
 const TYPE_RGB = [[230, 107, 78], [165, 139, 219], [224, 180, 92]];
 const SCOPE_MODES = ["Onda", "Grelha", "Esfera", "Hélice", "Toro", "Cubo"];
