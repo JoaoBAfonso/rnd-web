@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101214">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>CymaForma RND</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 15px system-ui, sans-serif; background: #101214; color: #ddd; }
+  header, section { padding: 10px 14px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  select, button { background: #23272b; color: #eee; border: 1px solid #3a4046; border-radius: 6px; padding: 8px 12px; font-size: 15px; }
+  button.on { background: #2c6b3f; }
+  label.s { display: grid; grid-template-columns: 90px 1fr 70px; gap: 8px; align-items: center; width: min(560px, 100%); }
+  input[type=range] { width: 100%; height: 28px; }
+  .tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .track { border: 1px solid #2d3338; border-radius: 8px; padding: 8px; }
+  .track b { color: #E66B4E; }
+  #log { color: #4cd964; font: 12px monospace; white-space: pre-wrap; max-height: 150px; overflow: auto; }
+  .info { color: #4cd964; }
+  #kb { display: flex; user-select: none; touch-action: none; }
+  #kb .k { flex: 1; height: 110px; border: 1px solid #000; border-radius: 0 0 6px 6px; background: #e8e8e8; color: #222; display: flex; align-items: flex-end; justify-content: center; font-size: 12px; padding-bottom: 4px; }
+  #kb .k.b { background: #2a2e33; color: #ddd; }
+  #kb .k.sel { outline: 2px solid #E0B45C; outline-offset: -2px; }
+  #kb .k.down { background: #4cd964; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <button id="connect">Ligar MIDI</button>
+    <select id="inSel"></select>
+    <select id="outSel"></select>
+    <button id="sync">Sincronizar</button>
+  </div>
+  <div class="info" id="status">Sem ligação.</div>
+</header>
+
+<section>
+  <div class="row" id="types"></div>
+  <div class="row">
+    <button id="lockType">Type: Random</button>
+    <button id="lockKey">Key: Random</button>
+    <button id="lockScale">Scale: Random</button>
+  </div>
+  <label class="s">Scale <select id="scale"></select><span></span></label>
+  <label class="s">BPM <input id="bpm" type="range" min="20" max="400" value="120"><span id="bpmV">120</span></label>
+  <div class="row">Seed: <span class="info" id="seed">—</span> <input id="seedIn" size="10" placeholder="hex"> <button id="seedSend">Enviar seed</button></div>
+</section>
+
+<section>
+  <div class="row">
+    Preset: <select id="presetSel"></select>
+    <button id="presetRecall">Recuperar</button>
+    <button id="presetDelete">Apagar</button>
+    <input id="presetName" size="14" placeholder="nome">
+    <button id="presetSave">Guardar</button>
+    <button id="presetExport">Exportar</button>
+    <button id="presetImport">Importar</button>
+    <input id="presetFile" type="file" accept="application/json" hidden>
+  </div>
+</section>
+
+<section>
+  <label class="s">Master Vol <input data-ch="0" data-cc="7" type="range" min="0" max="127"><span></span></label>
+  <label class="s">Master Rev <input data-ch="0" data-cc="91" type="range" min="0" max="127"><span></span></label>
+  <div class="tracks" id="tracks"></div>
+</section>
+
+<section>
+  <div class="row">
+    <label>Canal MIDI <select id="kbCh"></select></label>
+    <label>Oitava <select id="kbOct"></select></label>
+    <button id="kbHold">Hold</button>
+  </div>
+  <div id="kb"></div>
+</section>
+
+<section><div id="log"></div></section>
+
+<script>
+const PATCH_TYPES = ["Sequence", "Drone", "Jingles"];
+const SCALES = ["Random","Major","Minor","Harmonic Minor","Blues","Major Pentatonic","Minor Pentatonic","Dorian","Phrygian","Lydian","Mixolydian","Locrian","Whole Tone","Double Harmonic","Hungarian Minor","Phrygian Dominant","Hirajoshi","In Sen","Prometheus","Octatonic","Persian"];
+const HDR = [0x6F, 0x62, 0x78];
+let access = null, midiIn = null, midiOut = null;
+const $ = id => document.getElementById(id);
+const log = t => { const l = $("log"); l.textContent = (t + "\n" + l.textContent).slice(0, 4000); };
+const dec7 = bytes => bytes.reduce((a, b, i) => a + ((b & 0x7F) << (7 * i)), 0);
+
+const sliders = {};
+function mkSlider(host, ch, cc, label) {
+  const el = document.createElement("label");
+  el.className = "s";
+  el.innerHTML = `${label}<input type="range" min="0" max="127"><span>0</span>`;
+  const input = el.querySelector("input"), val = el.querySelector("span");
+  input.oninput = () => { val.textContent = input.value; sendCC(ch, cc, +input.value); };
+  sliders[ch + ":" + cc] = { input, val };
+  host.appendChild(el);
+}
+document.querySelectorAll("[data-ch]").forEach(input => {
+  const ch = +input.dataset.ch, cc = +input.dataset.cc, val = input.nextElementSibling;
+  input.oninput = () => { val.textContent = input.value; sendCC(ch, cc, +input.value); };
+  sliders[ch + ":" + cc] = { input, val };
+});
+for (let t = 1; t <= 4; t++) {
+  const d = document.createElement("div");
+  d.className = "track";
+  d.innerHTML = `<b>Faixa ${t}</b> <span class="info" id="eng${t}"></span>`;
+  mkSlider(d, t, 91, "Reverb");
+  mkSlider(d, t, 7, "Volume");
+  $("tracks").appendChild(d);
+}
+function setSlider(ch, cc, v) {
+  const s = sliders[ch + ":" + cc];
+  if (s) { s.input.value = v; s.val.textContent = v; }
+}
+
+SCALES.forEach((n, i) => $("scale").add(new Option(n, i)));
+$("scale").onchange = () => sendCC(0, 9, +$("scale").value);
+PATCH_TYPES.forEach((n, i) => {
+  const b = document.createElement("button");
+  b.textContent = n; b.dataset.t = i;
+  b.onclick = () => { sendSysex([0x1A, i]); markType(i); state.type = i; state.typeLocked = true; refreshLocks(); };
+  $("types").appendChild(b);
+});
+function markType(i) {
+  [...$("types").children].forEach(b => b.classList.toggle("on", +b.dataset.t === i));
+}
+let bpmTimer = null;
+$("bpm").oninput = () => {
+  const v = +$("bpm").value; $("bpmV").textContent = v;
+  clearTimeout(bpmTimer);
+  bpmTimer = setTimeout(() => sendSysex([0x1D, v & 0x7F, (v >> 7) & 0x7F]), 40);
+};
+$("seedSend").onclick = () => {
+  const s = parseInt($("seedIn").value, 16);
+  if (!Number.isFinite(s)) return;
+  sendSysex([0x10, ...Array.from({ length: 5 }, (_, i) => Math.floor(s / 2 ** (7 * i)) & 0x7F), 1]);
+};
+
+function sendCC(ch, cc, v) { midiOut && midiOut.send([0xB0 | ch, cc, v]); }
+function sendSysex(body) { midiOut && midiOut.send([0xF0, ...HDR, ...body, 0xF7]); }
+function requestSync() { sendSysex([0x19]); sendSysex([0x18]); }
+
+function onMessage(e) {
+  const d = e.data;
+  if ((d[0] & 0xF0) === 0xB0) {
+    const ch = d[0] & 0x0F, cc = d[1], v = d[2];
+    if (cc === 9 && ch === 0) { $("scale").value = v; }
+    else if (cc === 7 || cc === 91) setSlider(ch, cc, v);
+    return;
+  }
+  if (d[0] !== 0xF0 || d[1] !== HDR[0] || d[2] !== HDR[1] || d[3] !== HDR[2]) return;
+  const cmd = d[4], p = Array.from(d.slice(5, d.length - 1));
+  if (cmd === 0x10 && p.length >= 5) {
+    const s = dec7(p.slice(0, 5));
+    const prev = $("seed").dataset.v;
+    $("seed").dataset.v = s;
+    $("seed").textContent = "0x" + s.toString(16).toUpperCase().padStart(8, "0");
+    if (prev !== undefined && +prev !== s) { setTimeout(requestSync, 500); setTimeout(requestSync, 1500); }
+  } else if (cmd === 0x26 && p.length >= 5) {
+    const locks = dec7(p.slice(0, 5)), t = locks % 4;
+    state.typeLocked = t !== 0;
+    if (t !== 0) { state.type = t - 1; markType(state.type); }
+    state.keyLocked = Math.floor(locks / 4) % 13 !== 0;
+    state.scaleLocked = Math.floor(locks / 52) % 21 !== 0;
+    refreshLocks();
+  } else if (cmd === 0x21 && p.length >= 3) {
+    if (p[0] < 3) { state.type = p[0]; if (!state.typeLocked) markType(p[0]); }
+    if (p.length >= 5 && p[3] < 12) state.rootNote = p[3];
+    refreshLocks();
+    const bpm = dec7(p.slice(1, 3));
+    if (bpm >= 20 && bpm <= 400) { $("bpm").value = bpm; $("bpmV").textContent = bpm; }
+    if (p.length >= 5 && p[4] < SCALES.length - 1) $("scale").value = p[4] + 1;
+  } else if (cmd === 0x25 && p.length >= 3) {
+    const bpm = dec7(p.slice(1, 3));
+    if (bpm >= 20 && bpm <= 400) { $("bpm").value = bpm; $("bpmV").textContent = bpm; }
+    $("bpm").disabled = p[0] === 1 || p[0] === 2;
+  } else if (cmd === 0x20) {
+    for (let t = 1; t <= 4; t++) $("eng" + t).textContent = "";
+  } else if (cmd === 0x22 && p.length >= 4) {
+    const end = p.indexOf(0, 3);
+    const name = String.fromCharCode(...p.slice(3, end < 0 ? undefined : end));
+    if (p[0] < 4) $("eng" + (p[0] + 1)).textContent = name;
+  } else if (cmd === 0x28 && p.length >= 9) {
+    for (let i = 0; i < 4; i++) { setSlider(i + 1, 7, p[i]); setSlider(i + 1, 91, p[4 + i]); }
+  } else if (cmd === 0x23 && p.length >= 2) {
+    log(`Firmware RND: ${p[0]}.${p[1]}`);
+  }
+  log("IN SysEx 0x" + cmd.toString(16));
+}
+
+const PITCHES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const state = { typeLocked: false, keyLocked: false, scaleLocked: false, type: 0, rootNote: null, selPitch: 0, hold: false };
+const held = new Map();
+function refreshLocks() {
+  const set = (id, on, text) => { $(id).classList.toggle("on", on); $(id).textContent = text; };
+  set("lockType", state.typeLocked, "Type: " + (state.typeLocked ? PATCH_TYPES[state.type] : "Random"));
+  set("lockKey", state.keyLocked, "Key: " + (state.keyLocked && state.rootNote != null ? PITCHES[state.rootNote] : "Random"));
+  set("lockScale", state.scaleLocked, "Scale: " + (state.scaleLocked ? SCALES[+$("scale").value] : "Random"));
+}
+$("lockType").onclick = () => {
+  if (!midiOut) return;
+  if (state.typeLocked) { sendSysex([0x1A, 127]); state.typeLocked = false; }
+  else { sendSysex([0x1A, state.type]); state.typeLocked = true; }
+  refreshLocks();
+};
+$("lockKey").onclick = () => {
+  if (!midiOut) return;
+  if (state.keyLocked) { sendSysex([0x27, 0]); state.keyLocked = false; }
+  else {
+    const pitch = state.rootNote != null ? state.rootNote : state.selPitch;
+    midiOut.send([0x90, 60 + pitch, 100]);
+    setTimeout(() => midiOut && midiOut.send([0x80, 60 + pitch, 0]), 60);
+    state.rootNote = pitch; state.keyLocked = true;
+  }
+  refreshLocks();
+};
+$("lockScale").onclick = () => {
+  if (!midiOut) return;
+  if (state.scaleLocked) { sendCC(0, 9, 0); state.scaleLocked = false; }
+  else {
+    const v = +$("scale").value;
+    if (v === 0) { log("Escolha uma Scale específica antes de a bloquear."); return; }
+    sendCC(0, 9, v); state.scaleLocked = true;
+  }
+  refreshLocks();
+};
+
+for (let i = 1; i <= 16; i++) $("kbCh").add(new Option(i, i - 1));
+for (let o = 0; o <= 7; o++) $("kbOct").add(new Option(o, o));
+$("kbOct").value = 3;
+const WHITE = [0, 2, 4, 5, 7, 9, 11];
+function buildKb() {
+  const kb = $("kb"); kb.innerHTML = "";
+  for (let i = 0; i < 12; i++) {
+    const k = document.createElement("div");
+    k.className = "k" + ([1, 3, 6, 8, 10].includes(i) ? " b" : "");
+    k.textContent = PITCHES[i]; k.dataset.p = i;
+    k.onpointerdown = e => { k.setPointerCapture(e.pointerId); keyDown(i, k); };
+    k.onpointerup = k.onpointercancel = () => keyUp(i, k);
+    kb.appendChild(k);
+  }
+}
+buildKb();
+function noteFor(p) { return (+$("kbOct").value + 1) * 12 + p; }
+function keyDown(p, el) {
+  if (!midiOut) return;
+  const ch = +$("kbCh").value, note = noteFor(p), id = ch + ":" + note;
+  state.selPitch = p;
+  [...$("kb").children].forEach(k => k.classList.toggle("sel", +k.dataset.p === p));
+  if (state.hold && held.has(id)) { midiOut.send([0x80 | ch, note, 0]); held.delete(id); el.classList.remove("down"); return; }
+  midiOut.send([0x90 | ch, note, 100]);
+  held.set(id, { ch, note, el });
+  el.classList.add("down");
+  if (ch === 0) { state.rootNote = p; if (!state.keyLocked) sendSysex([0x27, 0]); refreshLocks(); }
+}
+function keyUp(p, el) {
+  if (state.hold) return;
+  const ch = +$("kbCh").value, note = noteFor(p), id = ch + ":" + note;
+  if (held.has(id)) { midiOut && midiOut.send([0x80 | ch, note, 0]); held.delete(id); }
+  el.classList.remove("down");
+}
+$("kbHold").onclick = () => {
+  state.hold = !state.hold;
+  $("kbHold").classList.toggle("on", state.hold);
+  if (!state.hold) { held.forEach(h => { midiOut && midiOut.send([0x80 | h.ch, h.note, 0]); h.el.classList.remove("down"); }); held.clear(); }
+};
+
+const ENGINES = ["Subtractive","FM","Acid (303)","Noise","Speech","Plucked String","SuperSaw","Harmonic"];
+const STORE = "rndPresets";
+let presetToken = 0;
+const loadPresets = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
+const savePresets = p => localStorage.setItem(STORE, JSON.stringify(p));
+function refreshPresets(select) {
+  const names = Object.keys(loadPresets()).sort((a, b) => a.localeCompare(b));
+  const sel = $("presetSel"); sel.innerHTML = "";
+  names.forEach(n => sel.add(new Option(n, n)));
+  if (select && names.includes(select)) sel.value = select;
+}
+function capturePreset() {
+  const seed = +$("seed").dataset.v;
+  if (!$("seed").dataset.v) return null;
+  const engines = {}, mixer = {};
+  for (let t = 1; t <= 4; t++) {
+    const name = $("eng" + t).textContent;
+    if (ENGINES.includes(name)) engines[t - 1] = name;
+  }
+  for (let ch = 0; ch <= 4; ch++) {
+    mixer[ch] = {};
+    [7, 91].forEach(cc => { const s = sliders[ch + ":" + cc]; if (s) mixer[ch][cc] = +s.input.value; });
+  }
+  return {
+    seed, type: state.type, bpm: +$("bpm").value, scale: +$("scale").value,
+    key: state.rootNote, engines, mixer,
+    locks: { type: state.typeLocked, scale: state.scaleLocked, key: state.keyLocked },
+  };
+}
+$("presetSave").onclick = () => {
+  const name = $("presetName").value.trim() || $("presetSel").value;
+  if (!name) { log("Indique um nome para o preset."); return; }
+  const data = capturePreset();
+  if (!data) { log("Ainda não foi recebida a seed do RND."); return; }
+  const all = loadPresets(); all[name] = data; savePresets(all);
+  $("presetName").value = ""; refreshPresets(name);
+  log(`Preset '${name}' guardado.`);
+};
+$("presetDelete").onclick = () => {
+  const name = $("presetSel").value, all = loadPresets();
+  if (!name || !(name in all) || !confirm(`Apagar o preset '${name}'?`)) return;
+  delete all[name]; savePresets(all); refreshPresets();
+};
+$("presetRecall").onclick = () => {
+  const name = $("presetSel").value, p = loadPresets()[name];
+  if (!p) return;
+  if (!midiOut) { log("Ligue o MIDI antes de recuperar um preset."); return; }
+  const token = ++presetToken;
+  sendSysex([0x10, ...Array.from({ length: 5 }, (_, i) => Math.floor(p.seed / 2 ** (7 * i)) & 0x7F), 1]);
+  log(`Recall do preset '${name}' iniciado.`);
+  setTimeout(() => applyPreset(name, p, token), 1800);
+};
+function applyPreset(name, p, token) {
+  if (token !== presetToken || !midiOut) return;
+  const locks = p.locks || {};
+  if (Number.isInteger(p.type) && p.type >= 0 && p.type < 3) {
+    sendSysex([0x1A, p.type]); state.type = p.type; markType(p.type);
+    state.typeLocked = true;
+    if (locks.type === false) { sendSysex([0x1A, 127]); state.typeLocked = false; }
+  }
+  if (Number.isInteger(p.scale) && p.scale >= 0 && p.scale < SCALES.length) {
+    $("scale").value = p.scale; sendCC(0, 9, p.scale); state.scaleLocked = p.scale !== 0;
+    if (locks.scale === false) { sendCC(0, 9, 0); state.scaleLocked = false; }
+  }
+  if (Number.isInteger(p.bpm) && p.bpm >= 20 && p.bpm <= 400) {
+    sendSysex([0x1D, p.bpm & 0x7F, (p.bpm >> 7) & 0x7F]);
+    $("bpm").value = p.bpm; $("bpmV").textContent = p.bpm;
+  }
+  Object.entries(p.engines || {}).forEach(([t, eng]) => {
+    if (ENGINES.includes(eng) && +t >= 0 && +t < 4) {
+      sendSysex([0x1B, +t, ...Array.from(eng, c => c.charCodeAt(0)), 0]);
+      $("eng" + (+t + 1)).textContent = eng;
+    }
+  });
+  Object.entries(p.mixer || {}).forEach(([ch, controls]) => {
+    Object.entries(controls).forEach(([cc, v]) => {
+      if ((+cc === 7 || +cc === 91) && Number.isInteger(v) && v >= 0 && v <= 127) {
+        sendCC(+ch, +cc, v); setSlider(+ch, +cc, v);
+      }
+    });
+  });
+  if (Number.isInteger(p.key) && p.key >= 0 && p.key < 12) {
+    const note = 60 + p.key;
+    midiOut.send([0x90, note, 100]);
+    state.rootNote = p.key;
+    setTimeout(() => {
+      if (token !== presetToken || !midiOut) return;
+      midiOut.send([0x80, note, 0]);
+      if (locks.key) state.keyLocked = true;
+      else { sendSysex([0x27, 0]); state.keyLocked = false; }
+      refreshLocks();
+    }, 60);
+  }
+  refreshLocks();
+  log(`Parâmetros do preset '${name}' aplicados.`);
+}
+$("presetExport").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(loadPresets(), null, 2)], { type: "application/json" }));
+  a.download = "rnd-presets.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$("presetImport").onclick = () => $("presetFile").click();
+$("presetFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    const all = loadPresets();
+    let n = 0;
+    for (const [k, v] of Object.entries(data)) if (v && Number.isInteger(v.seed)) { all[k] = v; n++; }
+    savePresets(all); refreshPresets(); log(`${n} presets importados.`);
+  } catch (err) { log("Ficheiro de presets inválido."); }
+};
+refreshPresets();
+
+function fillPorts() {
+  const fill = (sel, ports) => {
+    const cur = sel.value; sel.innerHTML = "";
+    ports.forEach(p => sel.add(new Option(p.name, p.id)));
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+    else {
+      const rnd = [...sel.options].find(o => /rnd/i.test(o.text));
+      if (rnd) sel.value = rnd.value;
+    }
+  };
+  fill($("inSel"), [...access.inputs.values()]);
+  fill($("outSel"), [...access.outputs.values()]);
+  bindPorts();
+}
+function bindPorts() {
+  if (midiIn) midiIn.onmidimessage = null;
+  midiIn = access.inputs.get($("inSel").value) || null;
+  midiOut = access.outputs.get($("outSel").value) || null;
+  if (midiIn) midiIn.onmidimessage = onMessage;
+  $("status").textContent = midiIn && midiOut ? `Ligado: ${midiIn.name} / ${midiOut.name}` : "Selecione entrada e saída MIDI.";
+  if (midiIn && midiOut) requestSync();
+}
+$("inSel").onchange = $("outSel").onchange = bindPorts;
+$("sync").onclick = requestSync;
+$("connect").onclick = async () => {
+  if (!navigator.requestMIDIAccess) { $("status").textContent = "Web MIDI não suportado neste browser (use Chrome/Edge)."; return; }
+  try {
+    access = await navigator.requestMIDIAccess({ sysex: true });
+    access.onstatechange = fillPorts;
+    fillPorts();
+  } catch (e) { $("status").textContent = "Acesso MIDI recusado: " + e.message; }
+};
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("sw.js").catch(e => log("Service worker: " + e.message));
+}
+if (!window.isSecureContext) $("status").textContent = "Contexto não seguro: abra via http://localhost ou HTTPS.";
+</script>
+</body>
+</html>
