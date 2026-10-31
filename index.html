@@ -27,7 +27,7 @@
   #kb .k.b { background: #2a2e33; color: #ddd; }
   #kb .k.sel { outline: 2px solid #E0B45C; outline-offset: -2px; }
   #kb .k.down { background: #4cd964; }
-  #meters { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-width: 560px; }
+  #meters { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; max-width: 200px; }
   .m { background: #1a1d20; border-radius: 4px; height: 70px; position: relative; overflow: hidden; }
   .m i { position: absolute; left: 0; right: 0; bottom: 0; background: #4cd964; height: 0; }
   .m span { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-size: 11px; color: #aaa; }
@@ -402,7 +402,7 @@ $("presetFile").onchange = async e => {
 };
 refreshPresets();
 
-const REC_CHANNELS = 6;
+const REC_CHANNELS = 2;
 const MAX_REC_BYTES = 1.5 * 1024 * 1024 * 1024;
 const workletSrc = n => `
 class Rec extends AudioWorkletProcessor {
@@ -484,7 +484,7 @@ async function connectAudio() {
     } });
     await fillAudioDevices();
     const track = rec.stream.getAudioTracks()[0], st = track.getSettings();
-    rec.n = Math.max(1, Math.min(REC_CHANNELS, st.channelCount || 2));
+    rec.n = REC_CHANNELS;
     rec.ctx = new AudioContext({ sampleRate: st.sampleRate || 48000, latencyHint: "playback" });
     const url = URL.createObjectURL(new Blob([workletSrc(rec.n)], { type: "text/javascript" }));
     await rec.ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
@@ -498,8 +498,10 @@ async function connectAudio() {
     const mute = rec.ctx.createGain(); mute.gain.value = 0;
     src.connect(rec.node); rec.node.connect(mute); mute.connect(rec.ctx.destination);
     const got = st.channelCount || rec.channels;
-    const ok = rec.n >= 1;
-    $("recInfo").textContent = `${track.label || "Entrada"}: ${got} canais, ${rec.ctx.sampleRate} Hz` + (rec.n < REC_CHANNELS ? ` — o browser só entrega ${rec.n}; grava ${rec.n}.` : "");
+    const ok = true;
+    $("recInfo").textContent = `${track.label || "Entrada"}: estéreo (L=canal 1, R=canal 2), ${rec.ctx.sampleRate} Hz`;
+    log(`Diagnóstico: pedido=2, settings.channelCount=${st.channelCount}, source.channelCount=${rec.channels}`
+      + (rec.channels < 2 || st.channelCount < 2 ? " — o browser entregou só 1 canal; o canal 2 ficará em silêncio." : ""));
     log($("recInfo").textContent);
     $("rec").disabled = !ok;
   } catch (e) {
