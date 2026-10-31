@@ -10,7 +10,11 @@
 <title>CymaForma RND</title>
 <style>
   :root { color-scheme: dark; --bg:#101214; --panel:#1D2125; --gray:#252A2E; --line:#34383D; --accent:#E66B4E; --accent2:#F07B5E; --teal:#55C6B3; --text:#E6E9E8; --muted:#929A9E; --ink:#17191C; }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; min-width: 0; }
+  html { overflow-x: hidden; }
+  select { max-width: 100%; }
+  .track button#fol1, .track button[id^=fol] { padding: 4px 6px; font-size: 10px; flex: none; }
+  input:not([type=range]) { max-width: 100%; }
   body { margin: 0; font: 14px/1.3 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
   main { max-width: 760px; margin: 0 auto; padding: 8px 10px 24px; display: flex; flex-direction: column; gap: 10px; }
   header, section { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 10px 14px; }
@@ -39,17 +43,20 @@
   label.s select { grid-column: 2 / 4; }
   input[type=range] { width: 100%; height: 28px; accent-color: var(--accent); }
   hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
-  .tracks { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 8px; }
+  .tracks { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
   .track { background: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; }
-  .track b { color: var(--accent); letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+  .track b { color: var(--accent); font-size: 16px; width: 14px; text-align: center; }
+  .trow { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .trow select { flex: 1; min-width: 0; }
+  .grow { flex: 1; }
   .track:nth-child(2) b { color: var(--teal); } .track:nth-child(3) b { color: #A58BDB; } .track:nth-child(4) b { color: #E0B45C; }
   .track button { min-height: 32px; padding: 4px 10px; }
   #log { color: var(--teal); font: 12px Consolas, monospace; white-space: pre-wrap; max-height: 150px; overflow: auto; }
   .info { color: var(--teal); font-weight: 400; }
-  #kb { display: flex; user-select: none; touch-action: none; gap: 2px; }
-  #kb .k { flex: 1; height: 110px; border-radius: 0 0 8px 8px; background: #D7DEDB; color: var(--ink); display: flex; align-items: flex-end; justify-content: center; font-size: 12px; padding-bottom: 4px; }
-  #kb .k.b { background: var(--gray); color: var(--text); }
-  #kb .k.sel { outline: 2px solid #E0B45C; outline-offset: -2px; }
+  #kb { position: relative; height: 122px; user-select: none; touch-action: none; }
+  #kb .k { position: absolute; top: 0; height: 100%; border: 1px solid var(--line); border-radius: 0 0 6px 6px; background: #D7DEDB; color: var(--ink); display: flex; align-items: flex-end; justify-content: center; font-size: 10px; padding-bottom: 4px; }
+  #kb .k.b { height: 62%; background: #17191C; color: var(--text); z-index: 2; border-radius: 0 0 5px 5px; }
+  #kb .k.sel { box-shadow: inset 0 0 0 2px #E0B45C; }
   #kb .k.down { background: var(--accent); color: var(--ink); }
   #meters { display: grid; grid-template-columns: 1fr; gap: 6px; max-width: 100px; }
   .m { background: var(--ink); border-radius: 6px; height: 70px; position: relative; overflow: hidden; }
@@ -83,19 +90,29 @@
 <section>
   <button id="random">Random<br>RND</button>
   <hr>
-  <h2>Type</h2>
-  <div class="row" id="types"></div>
   <div class="row">
-    <button id="lockType">Type: Random</button>
-    <button id="lockKey">Key: Random</button>
-    <button id="lockScale">Scale: Random</button>
+    <span class="lbl">Nº Faixas</span>
+    <select id="trackCount"><option>Auto</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
+    <span id="active">Ativas: —</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Type</span>
+    <span class="row" id="types" style="margin:0"></span>
+    <button id="lockType" class="lock">Lock</button>
   </div>
   <hr>
-  <label class="s">Scale <select id="scale"></select></label>
-  <label class="s">BPM <input id="bpm" type="range" min="20" max="400" value="120"><span id="bpmV">120</span></label>
-  <div class="row"><button id="tStart">▶ Start</button> <button id="tStop">■ Stop</button></div>
+  <div class="row">
+    <label class="s grow">Scale <select id="scale"></select></label>
+    <button id="lockScale" class="lock">Lock</button>
+  </div>
   <hr>
-  <div class="row"><span class="lbl">Seed</span> <span class="info" id="seed">—</span> <input id="seedIn" size="10" placeholder="hex"> <button id="seedSend">Enviar seed</button></div>
+  <label class="s">BPM <input id="bpm" type="range" min="20" max="400" value="120"><span id="bpmV">120</span></label>
+  <hr>
+  <label class="s">All Reverb <input data-ch="0" data-cc="91" type="range" min="0" max="127"><span></span></label>
+  <label class="s">All Volume <input data-ch="0" data-cc="7" type="range" min="0" max="127"><span></span></label>
+  <div class="tracks" id="tracks"></div>
+  <hr>
+  <div class="row"><span class="lbl">Seed</span> <span class="info" id="seed">—</span> <input id="seedIn" size="8" placeholder="Seed (hex)"> <button id="seedSend">Enviar seed</button></div>
 </section>
 
 <section>
@@ -106,7 +123,7 @@
     <button id="presetDelete">Del</button>
   </div>
   <div class="row">
-    <input id="presetName" size="14" placeholder="Nome do preset">
+    <input id="presetName" size="12" placeholder="Nome do preset">
     <button id="presetSave">Save</button>
     <button id="presetExport">Exportar</button>
     <button id="presetImport">Importar</button>
@@ -115,19 +132,21 @@
 </section>
 
 <section>
-  <h2>Mixer</h2>
-  <div class="row"><span class="lbl">Nº Faixas</span> <select id="trackCount"><option>Auto</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div>
-  <label class="s">Master Vol <input data-ch="0" data-cc="7" type="range" min="0" max="127"><span></span></label>
-  <label class="s">Master Rev <input data-ch="0" data-cc="91" type="range" min="0" max="127"><span></span></label>
-  <div class="tracks" id="tracks"></div>
-</section>
-
-<section>
-  <h2>Teclado</h2>
   <div class="row">
-    <label>Midi Ch <select id="kbCh"></select></label>
-    <label>Oitava <select id="kbOct"></select></label>
-    <button id="kbHold">Hold</button>
+    <button id="kbHold">Hold off</button>
+    <button id="tStart">Start</button>
+    <button id="tStop">Stop</button>
+    <button id="lockKey">Lock Key</button>
+  </div>
+  <div class="row">
+    <span class="lbl">Midi Ch</span>
+    <span class="row" id="kbChs" style="margin:0"></span>
+    <button id="rec" disabled>● REC</button>
+  </div>
+  <div class="row">
+    <button id="octDn">Oct -</button><button id="octUp">Oct +</button>
+    <button id="noteDn">Note -</button><button id="noteUp">Note +</button>
+    <span class="info" id="kbRange"></span>
   </div>
   <div id="kb"></div>
 </section>
@@ -137,7 +156,6 @@
   <div class="row">
     <button id="audioConnect">Ligar áudio</button>
     <select id="audioSel"></select>
-    <button id="rec" disabled>● REC</button>
     <span class="info" id="recInfo">Áudio desligado.</span>
   </div>
   <div class="row"><canvas id="scope"></canvas><span id="scopeDb" class="info">—</span></div>
@@ -148,6 +166,18 @@
 </main>
 
 <script>
+const ENGINES = ["Subtractive","FM","Acid (303)","Noise","Speech","Plucked String","SuperSaw","Harmonic"];
+const engineNames = ["—", "—", "—", "—"];
+function getEngine(i) { return engineNames[i]; }
+function refreshActive() {
+  const n = engineNames.filter(e => ENGINES.includes(e)).length;
+  $("active").textContent = "Ativas: " + (n || "—");
+}
+function setEngine(i, name) {
+  engineNames[i] = ENGINES.includes(name) ? name : "—";
+  $("eng" + (i + 1)).value = engineNames[i];
+  refreshActive();
+}
 const PATCH_TYPES = ["Sequence", "Drone", "Jingles"];
 const SCALES = ["Random","Major","Minor","Harmonic Minor","Blues","Major Pentatonic","Minor Pentatonic","Dorian","Phrygian","Lydian","Mixolydian","Locrian","Whole Tone","Double Harmonic","Hungarian Minor","Phrygian Dominant","Hirajoshi","In Sen","Prometheus","Octatonic","Persian"];
 const HDR = [0x6F, 0x62, 0x78];
@@ -184,11 +214,18 @@ document.querySelectorAll("[data-ch]").forEach(input => bindSlider(input, input.
 for (let t = 1; t <= 4; t++) {
   const d = document.createElement("div");
   d.className = "track";
-  d.innerHTML = `<b>Faixa ${t}</b> <span class="info" id="eng${t}"></span>
-    <div class="row"><button id="mute${t}">M</button><button id="solo${t}">S</button><button id="fol${t}">Follow</button></div>`;
+  d.innerHTML = `<div class="trow"><b>${t}</b><button id="solo${t}">S</button><button id="mute${t}">M</button>
+    <select id="eng${t}"><option>—</option>${ENGINES.map(e => `<option>${e}</option>`).join("")}</select>
+    <button id="fol${t}">N/D</button></div>`;
   mkSlider(d, t, 91, "Reverb");
   mkSlider(d, t, 7, "Volume");
   $("tracks").appendChild(d);
+  $("eng" + t).onchange = () => {
+    const v = $("eng" + t).value;
+    if (!midiOut) { log("Ligue uma saída MIDI antes de alterar o engine."); setEngine(t - 1, getEngine(t - 1)); return; }
+    if (ENGINES.includes(v)) { sendSysex([0x1B, t - 1, ...Array.from(v, c => c.charCodeAt(0)), 0]); engineNames[t - 1] = v; }
+    refreshActive();
+  };
   $("mute" + t).onclick = () => toggleMute(t - 1);
   $("solo" + t).onclick = () => toggleSolo(t - 1);
   $("fol" + t).onclick = () => toggleFollow(t - 1);
@@ -204,7 +241,7 @@ function renderTrack(t) {
   $("solo" + (t + 1)).classList.toggle("on", mix.solo === t);
   const f = $("fol" + (t + 1));
   f.classList.toggle("on", mix.follow[t] === true);
-  f.textContent = mix.follow[t] === true ? "Follow ✓" : "Follow";
+  f.textContent = mix.follow[t] === true ? "Follow ✓" : mix.follow[t] === false ? "Follow" : "N/D";
 }
 const renderAll = () => [0, 1, 2, 3].forEach(renderTrack);
 function userSlider(ch, cc, v) {
@@ -367,11 +404,11 @@ function onMessage(e) {
     if (bpm >= 20 && bpm <= 400) { $("bpm").value = bpm; $("bpmV").textContent = bpm; }
     $("bpm").disabled = p[0] === 1 || p[0] === 2;
   } else if (cmd === 0x20) {
-    for (let t = 1; t <= 4; t++) $("eng" + t).textContent = "";
+    for (let t = 0; t < 4; t++) setEngine(t, "—");
   } else if (cmd === 0x22 && p.length >= 4) {
     const end = p.indexOf(0, 3);
     const name = String.fromCharCode(...p.slice(3, end < 0 ? undefined : end));
-    if (p[0] < 4) $("eng" + (p[0] + 1)).textContent = name;
+    if (p[0] < 4) setEngine(p[0], name);
   } else if (cmd === 0x28 && p.length >= 9) {
     onMixerSysex(p);
   } else if (cmd === 0x23 && p.length >= 2) {
@@ -385,9 +422,9 @@ const state = { typeLocked: false, keyLocked: false, scaleLocked: false, type: 0
 const held = new Map();
 function refreshLocks() {
   const set = (id, on, text) => { $(id).classList.toggle("on", on); $(id).textContent = text; };
-  set("lockType", state.typeLocked, "Type: " + (state.typeLocked ? PATCH_TYPES[state.type] : "Random"));
-  set("lockKey", state.keyLocked, "Key: " + (state.keyLocked && state.rootNote != null ? PITCHES[state.rootNote] : "Random"));
-  set("lockScale", state.scaleLocked, "Scale: " + (state.scaleLocked ? SCALES[+$("scale").value] : "Random"));
+  set("lockType", state.typeLocked, state.typeLocked ? "Locked" : "Lock");
+  set("lockKey", state.keyLocked, state.keyLocked ? "Unlock Key" + (state.rootNote != null ? " " + PITCHES[state.rootNote] : "") : "Lock Key");
+  set("lockScale", state.scaleLocked, state.scaleLocked ? "Locked" : "Lock");
 }
 $("lockType").onclick = () => {
   if (!midiOut) return;
@@ -417,46 +454,82 @@ $("lockScale").onclick = () => {
   refreshLocks();
 };
 
-for (let i = 1; i <= 16; i++) $("kbCh").add(new Option(i, i - 1));
-for (let o = 0; o <= 7; o++) $("kbOct").add(new Option(o, o));
-$("kbOct").value = 3;
-const WHITE = [0, 2, 4, 5, 7, 9, 11];
-function buildKb() {
-  const kb = $("kb"); kb.innerHTML = "";
-  for (let i = 0; i < 12; i++) {
-    const k = document.createElement("div");
-    k.className = "k" + ([1, 3, 6, 8, 10].includes(i) ? " b" : "");
-    k.textContent = PITCHES[i]; k.dataset.p = i;
-    k.onpointerdown = e => { k.setPointerCapture(e.pointerId); keyDown(i, k); };
-    k.onpointerup = k.onpointercancel = () => keyUp(i, k);
-    kb.appendChild(k);
-  }
+const BLACK = [1, 3, 6, 8, 10];
+const NOTE_NAME = n => PITCHES[n % 12] + (Math.floor(n / 12) - 1);
+const kb = { start: 48, ch: 0, count: 24 };
+["All", "1", "2", "3", "4"].forEach((t, c) => {
+  const b = document.createElement("button");
+  b.textContent = t; b.dataset.c = c;
+  b.onclick = () => setKbCh(c);
+  $("kbChs").appendChild(b);
+});
+function releaseAll() {
+  held.forEach(h => midiOut && midiOut.send([0x80 | h.ch, h.note, 0]));
+  held.clear();
+  document.querySelectorAll("#kb .down").forEach(k => k.classList.remove("down"));
 }
-buildKb();
-function noteFor(p) { return (+$("kbOct").value + 1) * 12 + p; }
-function keyDown(p, el) {
+function setKbCh(c) {
+  if (c === kb.ch) return;
+  releaseAll(); kb.ch = c;
+  [...$("kbChs").children].forEach(b => b.classList.toggle("on", +b.dataset.c === c));
+}
+function buildKb() {
+  const host = $("kb"); host.innerHTML = "";
+  const notes = Array.from({ length: kb.count }, (_, i) => kb.start + i);
+  const whites = notes.filter(n => !BLACK.includes(n % 12));
+  const w = 100 / whites.length;
+  let wi = 0;
+  notes.forEach(n => {
+    const black = BLACK.includes(n % 12);
+    const k = document.createElement("div");
+    k.className = "k" + (black ? " b" : "");
+    k.dataset.n = n;
+    if (black) { k.style.left = `calc(${wi * w}% - ${w * 0.3}%)`; k.style.width = `${w * 0.6}%`; }
+    else { k.style.left = `${wi * w}%`; k.style.width = `${w}%`; k.textContent = n % 12 === 0 ? NOTE_NAME(n) : ""; wi++; }
+    k.onpointerdown = e => { k.setPointerCapture(e.pointerId); keyDown(n, k); };
+    k.onpointerup = k.onpointercancel = () => keyUp(n, k);
+    host.appendChild(k);
+  });
+  $("kbRange").textContent = NOTE_NAME(kb.start) + "–" + NOTE_NAME(kb.start + kb.count - 1);
+  held.forEach(h => { const el = host.querySelector(`[data-n="${h.note}"]`); if (el) el.classList.add("down"); });
+}
+function shiftStart(d) {
+  const s = kb.start + d;
+  if (s < 0 || s + kb.count > 128) { log("O teclado não pode sair do intervalo MIDI 0–127."); return; }
+  kb.start = s; buildKb();
+}
+const W_UP = [2, 2, 1, 2, 2, 2, 1], W_DN = [1, 2, 2, 1, 2, 2, 2], WHITE = [0, 2, 4, 5, 7, 9, 11];
+$("octUp").onclick = () => shiftStart(12);
+$("octDn").onclick = () => shiftStart(-12);
+$("noteUp").onclick = () => shiftStart(W_UP[WHITE.indexOf(kb.start % 12)]);
+$("noteDn").onclick = () => shiftStart(-W_DN[WHITE.indexOf(kb.start % 12)]);
+function keyDown(note, el) {
   if (!midiOut) return;
-  const ch = +$("kbCh").value, note = noteFor(p), id = ch + ":" + note;
+  const ch = kb.ch, id = ch + ":" + note, p = note % 12;
   state.selPitch = p;
-  [...$("kb").children].forEach(k => k.classList.toggle("sel", +k.dataset.p === p));
+  document.querySelectorAll("#kb .sel").forEach(k => k.classList.remove("sel"));
+  el.classList.add("sel");
   if (state.hold && held.has(id)) { midiOut.send([0x80 | ch, note, 0]); held.delete(id); el.classList.remove("down"); return; }
   midiOut.send([0x90 | ch, note, 100]);
-  held.set(id, { ch, note, el });
+  held.set(id, { ch, note });
   el.classList.add("down");
   if (ch === 0) { state.rootNote = p; if (!state.keyLocked) sendSysex([0x27, 0]); refreshLocks(); }
 }
-function keyUp(p, el) {
+function keyUp(note, el) {
   if (state.hold) return;
-  const ch = +$("kbCh").value, note = noteFor(p), id = ch + ":" + note;
-  if (held.has(id)) { midiOut && midiOut.send([0x80 | ch, note, 0]); held.delete(id); }
+  const id = kb.ch + ":" + note;
+  if (held.has(id)) { midiOut && midiOut.send([0x80 | kb.ch, note, 0]); held.delete(id); }
   el.classList.remove("down");
 }
 $("kbHold").onclick = () => {
   state.hold = !state.hold;
   $("kbHold").classList.toggle("on", state.hold);
-  if (!state.hold) { held.forEach(h => { midiOut && midiOut.send([0x80 | h.ch, h.note, 0]); h.el.classList.remove("down"); }); held.clear(); }
+  $("kbHold").textContent = state.hold ? "Hold on" : "Hold off";
+  if (!state.hold) releaseAll();
 };
-
+buildKb();
+setKbCh(1); setKbCh(0);
+[...$("kbChs").children][0].classList.add("on");
 function setTrackCount(sel) {
   if (!midiOut) { log("Ligue o MIDI antes de alterar o número de faixas."); return false; }
   $("trackCount").value = sel;
@@ -464,7 +537,6 @@ function setTrackCount(sel) {
   return true;
 }
 $("trackCount").onchange = () => setTrackCount($("trackCount").value);
-const ENGINES = ["Subtractive","FM","Acid (303)","Noise","Speech","Plucked String","SuperSaw","Harmonic"];
 const STORE = "rndPresets";
 let presetToken = 0;
 const loadPresets = () => { try { return JSON.parse(localStorage.getItem(STORE)) || {}; } catch { return {}; } };
@@ -480,7 +552,7 @@ function capturePreset() {
   if (!$("seed").dataset.v) return null;
   const engines = {};
   for (let t = 1; t <= 4; t++) {
-    const name = $("eng" + t).textContent;
+    const name = engineNames[t - 1];
     if (ENGINES.includes(name)) engines[t - 1] = name;
   }
   const mixer = mixerSnapshot();
@@ -534,7 +606,7 @@ function applyPreset(name, p, token) {
   Object.entries(p.engines || {}).forEach(([t, eng]) => {
     if (ENGINES.includes(eng) && +t >= 0 && +t < 4) {
       sendSysex([0x1B, +t, ...Array.from(eng, c => c.charCodeAt(0)), 0]);
-      $("eng" + (+t + 1)).textContent = eng;
+      setEngine(+t, eng);
     }
   });
   Object.entries(p.mixer || {}).forEach(([ch, controls]) => {
