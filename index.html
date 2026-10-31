@@ -27,6 +27,11 @@
   #kb .k.b { background: #2a2e33; color: #ddd; }
   #kb .k.sel { outline: 2px solid #E0B45C; outline-offset: -2px; }
   #kb .k.down { background: #4cd964; }
+  #meters { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-width: 560px; }
+  .m { background: #1a1d20; border-radius: 4px; height: 70px; position: relative; overflow: hidden; }
+  .m i { position: absolute; left: 0; right: 0; bottom: 0; background: #4cd964; height: 0; }
+  .m span { position: absolute; top: 2px; left: 0; right: 0; text-align: center; font-size: 11px; color: #aaa; }
+  button.rec { background: #a3302a; }
 </style>
 </head>
 <body>
@@ -78,6 +83,16 @@
     <button id="kbHold">Hold</button>
   </div>
   <div id="kb"></div>
+</section>
+
+<section>
+  <div class="row">
+    <button id="audioConnect">Ligar áudio</button>
+    <select id="audioSel"></select>
+    <button id="rec" disabled>● REC</button>
+    <span class="info" id="recInfo">Áudio desligado.</span>
+  </div>
+  <div id="meters"></div>
 </section>
 
 <section><div id="log"></div></section>
@@ -386,6 +401,176 @@ $("presetFile").onchange = async e => {
   } catch (err) { log("Ficheiro de presets inválido."); }
 };
 refreshPresets();
+
+const REC_CHANNELS = 6;
+const MAX_REC_BYTES = 1.5 * 1024 * 1024 * 1024;
+const WORKLET_SRC = `
+class Rec extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.n = ${REC_CHANNELS}; this.cap = 4096; this.fill = 0;
+    this.buf = new Int16Array(this.cap * this.n);
+    this.peak = new Float32Array(this.n);
+    this.recording = false;
+    this.port.onmessage = e => {
+      if (e.data === "start") this.recording = true;
+      else if (e.data === "stop") { this.flush(); this.recording = false; }
+    };
+  }
+  flush() {
+    if (this.recording && this.fill > 0) {
+      const out = this.buf.slice(0, this.fill * this.n);
+      this.port.postMessage({ pcm: out.buffer }, [out.buffer]);
+    }
+    this.fill = 0;
+  }
+  process(inputs) {
+    const input = inputs[0];
+    const frames = input[0] ? input[0].length : 0;
+    if (!frames) return true;
+    for (let c = 0; c < this.n; c++) {
+      const ch = input[c];
+      if (!ch) continue;
+      for (let i = 0; i < frames; i++) { const a = Math.abs(ch[i]); if (a > this.peak[c]) this.peak[c] = a; }
+    }
+    if (this.recording) {
+      for (let i = 0; i < frames; i++) {
+        for (let c = 0; c < this.n; c++) {
+          const ch = input[c];
+          const s = ch ? Math.max(-1, Math.min(1, ch[i])) : 0;
+          this.buf[this.fill * this.n + c] = s < 0 ? s * 32768 : s * 32767;
+        }
+        if (++this.fill === this.cap) this.flush();
+      }
+    }
+    this.count = (this.count || 0) + frames;
+    if (this.count >= 2048) {
+      this.port.postMessage({ peak: Array.from(this.peak) });
+      this.peak.fill(0); this.count = 0;
+    }
+    return true;
+  }
+}
+registerProcessor("rec", Rec);`;
+const rec = { ctx: null, stream: null, node: null, active: false, chunks: [], bytes: 0, start: 0, timer: null, wake: null, channels: 0 };
+const meterEls = [];
+for (let c = 0; c < REC_CHANNELS; c++) {
+  const m = document.createElement("div");
+  m.className = "m"; m.innerHTML = `<span>${c + 1}</span><i></i>`;
+  $("meters").appendChild(m); meterEls.push(m);
+}
+const setMeter = (c, peak) => {
+  const db = peak > 0 ? 20 * Math.log10(peak) : -90;
+  meterEls[c].querySelector("i").style.height = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + "%";
+  meterEls[c].querySelector("span").textContent = db <= -90 ? (c + 1) : Math.round(db);
+};
+async function fillAudioDevices() {
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "audioinput");
+  const sel = $("audioSel"), cur = sel.value; sel.innerHTML = "";
+  devs.forEach(d => sel.add(new Option(d.label || "Entrada " + (sel.length + 1), d.deviceId)));
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  else { const r = [...sel.options].find(o => /rnd/i.test(o.text)); if (r) sel.value = r.value; }
+}
+async function connectAudio() {
+  if (!navigator.mediaDevices || !window.AudioWorkletNode) { $("recInfo").textContent = "Áudio não suportado neste browser."; return; }
+  if (rec.active) return;
+  closeAudio();
+  try {
+    const dev = $("audioSel").value;
+    rec.stream = await navigator.mediaDevices.getUserMedia({ audio: {
+      deviceId: dev ? { exact: dev } : undefined,
+      channelCount: { ideal: REC_CHANNELS, min: 1 },
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+    } });
+    await fillAudioDevices();
+    const track = rec.stream.getAudioTracks()[0], st = track.getSettings();
+    rec.ctx = new AudioContext({ sampleRate: st.sampleRate || 48000, latencyHint: "playback" });
+    const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "text/javascript" }));
+    await rec.ctx.audioWorklet.addModule(url); URL.revokeObjectURL(url);
+    const src = rec.ctx.createMediaStreamSource(rec.stream);
+    rec.channels = src.channelCount;
+    rec.node = new AudioWorkletNode(rec.ctx, "rec", {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+      channelCount: REC_CHANNELS, channelCountMode: "explicit", channelInterpretation: "discrete",
+    });
+    rec.node.port.onmessage = onRecMessage;
+    const mute = rec.ctx.createGain(); mute.gain.value = 0;
+    src.connect(rec.node); rec.node.connect(mute); mute.connect(rec.ctx.destination);
+    const got = st.channelCount || rec.channels;
+    const ok = got >= REC_CHANNELS;
+    $("recInfo").textContent = `${track.label || "Entrada"}: ${got} canais, ${rec.ctx.sampleRate} Hz` + (ok ? "" : " — são precisos 6 canais.");
+    log($("recInfo").textContent);
+    $("rec").disabled = !ok;
+  } catch (e) {
+    $("recInfo").textContent = "Erro de áudio: " + e.message;
+  }
+}
+function closeAudio() {
+  if (rec.stream) rec.stream.getTracks().forEach(t => t.stop());
+  if (rec.ctx) rec.ctx.close();
+  rec.stream = rec.ctx = rec.node = null;
+  $("rec").disabled = true;
+  for (let c = 0; c < REC_CHANNELS; c++) setMeter(c, 0);
+}
+function onRecMessage(e) {
+  if (e.data.peak) { e.data.peak.forEach((p, c) => setMeter(c, p)); return; }
+  if (e.data.pcm && rec.active) {
+    rec.chunks.push(e.data.pcm); rec.bytes += e.data.pcm.byteLength;
+    if (rec.bytes >= MAX_REC_BYTES) { log("Limite de memória atingido; gravação terminada."); stopRecording(); }
+  }
+}
+function wavHeader(bytes, rate) {
+  const h = new DataView(new ArrayBuffer(44)), w = (o, s) => [...s].forEach((c, i) => h.setUint8(o + i, c.charCodeAt(0)));
+  const blockAlign = REC_CHANNELS * 2;
+  w(0, "RIFF"); h.setUint32(4, 36 + bytes, true); w(8, "WAVE"); w(12, "fmt ");
+  h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, REC_CHANNELS, true);
+  h.setUint32(24, rate, true); h.setUint32(28, rate * blockAlign, true);
+  h.setUint16(32, blockAlign, true); h.setUint16(34, 16, true); w(36, "data"); h.setUint32(40, bytes, true);
+  return h.buffer;
+}
+function recFileName() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+  const key = state.rootNote != null ? PITCHES[state.rootNote] : PITCHES[state.selPitch];
+  const scale = SCALES[+$("scale").value] || "NA";
+  const seed = $("seed").dataset.v ? "0x" + (+$("seed").dataset.v).toString(16).toUpperCase().padStart(8, "0") : "NA";
+  return `RND_${stamp}_BPM_${$("bpm").value}_KEY_${key}_Scale_${scale}_Seed_${seed}.wav`.replace(/[^\w.\-]+/g, "_");
+}
+async function startRecording() {
+  if (!rec.node || rec.active) return;
+  rec.chunks = []; rec.bytes = 0; rec.name = recFileName(); rec.start = performance.now();
+  rec.active = true; rec.node.port.postMessage("start");
+  try { rec.wake = await navigator.wakeLock.request("screen"); } catch {}
+  $("rec").textContent = "■ STOP"; $("rec").classList.add("rec");
+  $("audioConnect").disabled = $("audioSel").disabled = true;
+  rec.timer = setInterval(() => {
+    const s = Math.floor((performance.now() - rec.start) / 1000);
+    $("recInfo").textContent = `A gravar ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} — ${(rec.bytes / 1048576).toFixed(0)} MB`;
+  }, 500);
+  log("Gravação de 6 canais iniciada.");
+}
+function stopRecording() {
+  if (!rec.active) return;
+  rec.node.port.postMessage("stop");
+  // Aguarda um instante para receber o último bloco enviado pelo worklet.
+  setTimeout(() => {
+    rec.active = false; clearInterval(rec.timer);
+    if (rec.wake) { rec.wake.release().catch(() => {}); rec.wake = null; }
+    $("rec").textContent = "● REC"; $("rec").classList.remove("rec");
+    $("audioConnect").disabled = $("audioSel").disabled = false;
+    const bytes = rec.bytes, rate = rec.ctx ? rec.ctx.sampleRate : 48000;
+    if (!bytes) { $("recInfo").textContent = "Gravação vazia."; return; }
+    const blob = new Blob([wavHeader(bytes, rate), ...rec.chunks], { type: "audio/wav" });
+    rec.chunks = [];
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = rec.name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    $("recInfo").textContent = `Gravação guardada: ${rec.name} (${(bytes / 1048576).toFixed(1)} MB)`;
+    log($("recInfo").textContent);
+  }, 150);
+}
+$("audioConnect").onclick = connectAudio;
+$("rec").onclick = () => rec.active ? stopRecording() : startRecording();
 
 function fillPorts() {
   const fill = (sel, ports) => {
